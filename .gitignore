@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+
+# Node
+node_modules/
+.npm/
+.next/
+out/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docker & data
+.data/
+*.log
+
+# Env
+.env
+.env.*

@@ -1,0 +1,14 @@
+services:
+  mongo:
+    image: mongo:6.0
+    container_name: recovery
+    restart: unless-stopped
+    ports:
+      - "27020:27020"
+    volumes:
+      - ./.data/mongo:/data/db
+    command: ["--bind_ip_all"]
+
+networks:
+  default:
+    name: walletnet
