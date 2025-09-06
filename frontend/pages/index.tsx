@@ -1,34 +1,34 @@
 import Head from 'next/head';
 
-type Props = { project: string; backendStatus: string };
+type Props = { project: string; parallax: boolean; backendStatus: string };
 
 export async function getServerSideProps() {
   const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
+  const parallax = (process.env.NEXT_PUBLIC_PARALLAX ?? '1') === '1';
   const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8000';
   let backendStatus = 'unknown';
   try {
     const res = await fetch(`${base}/health`, { cache: 'no-store' });
-    if (res.ok) {
-      const j = await res.json();
-      backendStatus = j?.status ?? 'unknown';
-    } else {
-      backendStatus = `http ${res.status}`;
-    }
-  } catch (e) {
+    backendStatus = res.ok ? (await res.json())?.status ?? 'unknown' : `http ${res.status}`;
+  } catch {
     backendStatus = 'unreachable';
   }
-  return { props: { project, backendStatus } };
+  return { props: { project, parallax, backendStatus } };
 }
 
-export default function Home({ project, backendStatus }: Props) {
+export default function Home({ project, parallax, backendStatus }: Props) {
   return (
     <>
       <Head><title>{project}</title></Head>
+      {parallax && (
+        <section className="parallax parallax--hero" role="img" aria-label="Decorative parallax background">
+          <h1 style={{margin:0}}>{project}</h1>
+        </section>
+      )}
       <main className="container">
-        <h1>{project}</h1>
         <p className="hint">Watch-only wallet recovery — educational and defensive.</p>
         <p><strong>Backend:</strong> <span className="badge">{backendStatus}</span></p>
-        <span className="badge">Step 2(c): Frontend ↔ Backend wired via env URL</span>
+        <span className="badge">Step 2(d): Theme toggle + dual parallax</span>
       </main>
     </>
   );

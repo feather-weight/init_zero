@@ -1,10 +1,25 @@
-:root { color-scheme: light dark; }
+:root {
+  color-scheme: light dark;
+  --hero-image: url('/parallax-light.jpg');
+  --overlay: rgba(0,0,0,.25);
+}
+
+html[data-theme="dark"] {
+  --hero-image: url('/parallax-dark.jpg');
+  --overlay: rgba(0,0,0,.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { --hero-image: url('/parallax-dark.jpg'); --overlay: rgba(0,0,0,.35); }
+}
+
+/* base */
 body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
 .container { max-width: 880px; margin: 2rem auto; padding: 1rem; }
 .badge { display:inline-block; padding:.2rem .5rem; border-radius:.5rem; border:1px solid currentColor; font-size:.8rem; opacity:.8; }
 .hint { opacity:.7; font-size:.9rem; }
 
-/* Parallax section styles */
+/* Parallax */
 .parallax {
   position: relative;
   min-height: 40vh;
@@ -14,14 +29,15 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI
   text-shadow: 0 1px 2px rgba(0,0,0,.4);
   background-size: cover;
   background-position: center;
-  background-attachment: fixed;
+  background-attachment: fixed; /* simple, compatible parallax */
 }
 
 .parallax--hero {
-  background-image: linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)),
-                    url('/parallax-hero.jpg');
+  /* dual-mode background chosen by CSS var */
+  background-image: linear-gradient(var(--overlay), var(--overlay)), var(--hero-image);
 }
 
-.section {
-  padding: 3rem 1rem;
+/* Accessibility: respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .parallax { background-attachment: scroll; }
 }
