@@ -30,13 +30,15 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: Dockerfile
+      working_dir: /app
     container_name: recoverer-frontend
     restart: unless-stopped
     environment:
       - PROJECT_NAME=wallet-recoverer
       - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
-      - NEXT_PUBLIC_PARALLAX=1
+      - NEXT_PUBLIC_PARALLAX=true
+      - PORT=3000
     depends_on:
       - backend
     ports:

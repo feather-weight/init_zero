@@ -1,0 +1,51 @@
+:root {
+  --overlay: rgba(0,0,0,.25);
+  --bg-dark: url('/parallax-dark.jpg');
+  --bg-light: url('/parallax-light.jpg');
+  --text: #eaeaea;
+  --page: #0a0a0a;
+}
+
+html[data-theme='light'] {
+  --overlay: rgba(255,255,255,.25);
+  --text: #222;
+  --page: #f6f6f6;
+}
+
+.wrap { position: relative; min-height: 200vh; background: var(--page); color: var(--text); }
+
+.hero {
+  display: grid; place-items: center; text-align: center;
+  min-height: 60vh; padding: 3rem 1rem;
+}
+.badge {
+  display: inline-block; margin-top: .75rem; padding: .25rem .6rem;
+  border: 1px solid currentColor; border-radius: .5rem; font-size: .85rem; opacity: .85;
+}
+
+/* Parallax layers (GPU transforms; reliable on iOS) */
+.layerBack, .layerMid {
+  position: fixed; inset: 0; pointer-events: none; will-change: transform;
+  background-size: cover; background-position: center;
+  mix-blend-mode: normal;
+}
+.layerBack {
+  background-image: linear-gradient(var(--overlay), var(--overlay)), var(--bg-dark);
+}
+html[data-theme='light'] .layerBack {
+  background-image: linear-gradient(var(--overlay), var(--overlay)), var(--bg-light);
+}
+.layerMid {
+  background-image: radial-gradient(ellipse at 50% 20%, rgba(255,255,255,.06), transparent 60%);
+  opacity: .9;
+}
+
+.filler {
+  min-height: 120vh; display: grid; place-items: center; text-align: center;
+  padding: 2rem 1rem;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .layerBack, .layerMid { transform: none !important; }
+}
