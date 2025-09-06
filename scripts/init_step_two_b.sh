@@ -1,259 +1,80 @@
 #!/usr/bin/env bash
-# Step 2(b) — Frontend (Next.js) bootstrap with SCSS + Parallax
-# Plus: auto-fix docker-compose.yml (remove bad networks.frontend, ensure services.frontend)
-# and pin ESLint to a compatible version for eslint-config-next
+#
+# Step 2(b) static fix script
+#
+# This script rewrites docker‑compose.yml with a clean static
+# configuration for the mongo, backend and frontend services using
+# fixed host ports. It also builds and starts the frontend service
+# to confirm the new configuration works. Use this when the compose
+# file has been corrupted by stray `networks.frontend` blocks and
+# environment variables for ports are causing issues.
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-dc() { if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then docker compose "$@"; else docker-compose "$@"; fi; }
-root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-cd "$root"
+# Determine repository root (so script works from any location)
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$ROOT"
 
-echo "[2B] Ensure required env vars"
-touch .env
-grep -q '^PROJECT_NAME=' .env || echo 'PROJECT_NAME=wallet-recoverer' >> .env
-grep -q '^FRONTEND_PORT=' .env || echo 'FRONTEND_PORT=3000' >> .env
-grep -q '^FRONTEND_INTERNAL_PORT=' .env || echo 'FRONTEND_INTERNAL_PORT=3000' >> .env
-grep -q '^FRONTEND_SERVICE_NAME=' .env || echo 'FRONTEND_SERVICE_NAME=recoverer-frontend' >> .env
-grep -q '^NEXT_PUBLIC_PARALLAX=' .env || echo 'NEXT_PUBLIC_PARALLAX=1' >> .env
-grep -q '^NEXT_PUBLIC_BACKEND_URL=' .env || echo 'NEXT_PUBLIC_BACKEND_URL=http://localhost:8000' >> .env
+echo "[2B-static-fix] Rewriting docker-compose.yml with static ports"
 
-echo "[2B] Scaffolding frontend (Next.js + TypeScript + SCSS + Parallax)"
-mkdir -p frontend/pages/api frontend/pages frontend/public frontend/styles frontend/components
+cat > docker-compose.yml <<'YML'
+version: "3.8"
 
-# Remove any existing lock file to avoid stale dependencies
-rm -f frontend/package-lock.json || true
+services:
+  mongo:
+    image: mongo:6.0
+    container_name: recoverer-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./.data/mongo:/data/db
 
-cat > frontend/package.json <<'PKG'
-{
-  "name": "wallet-recoverer-frontend",
-  "private": true,
-  "scripts": {
-    "dev": "next dev -p ${FRONTEND_INTERNAL_PORT:-3000}",
-    "build": "next build",
-    "start": "next start -p ${FRONTEND_INTERNAL_PORT:-3000}",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "next": "14.2.6",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "sass": "1.77.8"
-  },
-  "devDependencies": {
-    "typescript": "5.5.4",
-    "@types/react": "18.3.3",
-    "@types/node": "22.5.5",
-    "eslint": "8.57.0",
-    "eslint-config-next": "14.2.6"
-  }
-}
-PKG
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: recoverer-backend
+    restart: unless-stopped
+    environment:
+      - PROJECT_NAME=wallet-recoverer
+      - API_BASE=/api
+      - MONGO_URI=mongodb://recoverer-mongo:27017/wallet_recoverer_db
+      - MONGO_DB_NAME=wallet_recoverer_db
+      - JWT_SECRET=changeme_fill_in_step_later
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
 
-cat > frontend/tsconfig.json <<'TS'
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["dom", "dom.iterable", "es2022"],
-    "allowJs": false,
-    "skipLibCheck": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "noEmit": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
-}
-TS
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: recoverer-frontend
+    restart: unless-stopped
+    environment:
+      - PROJECT_NAME=wallet-recoverer
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+      - NEXT_PUBLIC_PARALLAX=1
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
 
-cat > frontend/next.config.js <<'NC'
-/** @type {import('next').NextConfig} */
-const nextConfig = { reactStrictMode: true };
-module.exports = nextConfig;
-NC
+networks:
+  default:
+    name: recoverynet
+YML
 
-# Global SCSS with base parallax utilities
-cat > frontend/styles/globals.scss <<'SCSS'
-:root { color-scheme: light dark; }
-body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-.container { max-width: 880px; margin: 2rem auto; padding: 1rem; }
-.badge { display:inline-block; padding:.2rem .5rem; border-radius:.5rem; border:1px solid currentColor; font-size:.8rem; opacity:.8; }
-.hint { opacity:.7; font-size:.9rem; }
-
-.parallax {
-  position: relative;
-  min-height: 40vh;
-  display: grid;
-  place-items: center;
-  color: white;
-  text-shadow: 0 1px 2px rgba(0,0,0,.4);
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed; /* simple, compatible parallax */
-}
-.parallax--hero {
-  background-image:
-    linear-gradient(rgba(0,0,0,.25), rgba(0,0,0,.25)),
-    url('/parallax-hero.jpg');
-}
-
-/* accessibility */
-@media (prefers-reduced-motion: reduce) {
-  .parallax { background-attachment: scroll; }
-}
-SCSS
-
-# Basic app wrapper imports SCSS
-cat > frontend/pages/_app.tsx <<'APP'
-import type { AppProps } from 'next/app';
-import '../styles/globals.scss';
-export default function App({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
-}
-APP
-
-# Minimal Parallax component
-cat > frontend/components/Parallax.tsx <<'PARA'
-import React from 'react';
-type Props = { className?: string; children?: React.ReactNode };
-export default function Parallax({ className = '', children }: Props) {
-  return (
-    <section className={`parallax ${className}`} role="img" aria-label="Decorative parallax background">
-      <div>{children}</div>
-    </section>
-  );
-}
-PARA
-
-# Landing page with optional parallax hero (env-gated)
-cat > frontend/pages/index.tsx <<'IDX'
-import Head from 'next/head';
-import Parallax from '../components/Parallax';
-
- type Props = { project: string; parallax: boolean };
-
- export async function getServerSideProps() {
-   const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
-   const parallax = (process.env.NEXT_PUBLIC_PARALLAX ?? '1') === '1';
-   return { props: { project, parallax } };
- }
-
- export default function Home({ project, parallax }: Props) {
-   return (
-     <>
-       <Head><title>{project}</title></Head>
-       {parallax && (
-         <Parallax className="parallax--hero">
-           <h1 style={{margin:0}}>{project}</h1>
-         </Parallax>
-       )}
-       <main className="container">
-         <p className="hint">Watch-only wallet recovery — educational and defensive.</p>
-         <span className="badge">Step 2(b): Frontend bootstrap + SCSS + Parallax</span>
-       </main>
-     </>
-   );
- }
-IDX
-
-# Frontend API health
-cat > frontend/pages/api/health.ts <<'API'
-import type { NextApiRequest, NextApiResponse } from 'next';
-export default function handler(_req: NextApiRequest, res: NextApiResponse) {
-  res.status(200).json({ status: 'ok', service: 'frontend' });
-}
-API
-
-# Dockerfile for frontend with legacy peer deps flag to ensure build success
-cat > frontend/Dockerfile <<'DOCKER'
-FROM node:22-alpine
-ENV NEXT_TELEMETRY_DISABLED=1
-WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json* ./
-# Use --legacy-peer-deps to avoid breaking on peer-dep conflicts
-RUN npm install --no-audit --progress=false --legacy-peer-deps
-COPY frontend ./
-ARG FRONTEND_INTERNAL_PORT=3000
-ENV FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}
-EXPOSE ${FRONTEND_INTERNAL_PORT}
-CMD ["npm","run","start"]
-DOCKER
-
-# Provide a tiny placeholder hero if none exists (keep builds green)
-if [ ! -f frontend/public/parallax-hero.jpg ]; then
-  printf '\xFF\xD8\xFF\xD9' > frontend/public/parallax-hero.jpg || touch frontend/public/parallax-hero.jpg
+# Try to build and start the frontend to validate the configuration. If
+# docker compose is not available, fall back to docker‑compose.
+echo "[2B-static-fix] Building and starting frontend with static ports"
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  docker compose up -d --build frontend || true
+else
+  docker-compose up -d --build frontend || true
 fi
 
-echo "[2B] Fixing docker-compose.yml (remove bad networks.frontend, ensure services.frontend exists)"
-cp docker-compose.yml docker-compose.yml.bak || true
-
-# 1) Remove any misplaced `frontend:` block under `networks:`
-tmp1="$(mktemp)"
-awk '
-  BEGIN{in_networks=0; in_bad=0}
-  /^[[:space:]]*services:/ {in_networks=0}
-  /^[[:space:]]*networks:/ {in_networks=1; in_bad=0}
-  # if within networks and we hit a two-space frontend: block, start skipping
-  (in_networks && /^  frontend:/) {in_bad=1; next}
-  # stop skipping when we reach a new top-level key (no leading spaces)
-  (in_bad && /^[^[:space:]]/) {in_bad=0}
-  # or when networks: has clearly ended (services: appears)
-  (in_bad && /^[[:space:]]*services:/) {in_bad=0}
-  in_bad {next}
-  {print}
-' docker-compose.yml > "$tmp1" && mv "$tmp1" docker-compose.yml
-
-# 2) If services.frontend is still missing, insert it just before `networks:`
-if ! grep -qE '^[[:space:]]*frontend:' docker-compose.yml; then
-  tmp2="$(mktemp)"
-  awk '
-    BEGIN { inserted=0 }
-    /^[[:space:]]*networks:/ && !inserted {
-      print "  frontend:"
-      print "    build:"
-      print "      context: ."
-      print "      dockerfile: frontend/Dockerfile"
-      print "      args:"
-      print "        - FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}"
-      print "    container_name: ${FRONTEND_SERVICE_NAME}"
-      print "    restart: unless-stopped"
-      print "    environment:"
-      print "      - PROJECT_NAME=${PROJECT_NAME}"
-      print "      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}"
-      print "      - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}"
-      print "    depends_on:"
-      print "      - backend"
-      print "    ports:"
-      print "      - \"${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}\""
-      inserted=1
-    }
-    { print }
-  ' docker-compose.yml > "$tmp2" && mv "$tmp2" docker-compose.yml
-fi
-
-echo "[2B] Validate compose & start frontend"
-dc config -q
-dc build frontend
-dc up -d frontend
-
-# Doc (optional PDF via scripts/_pdf.sh if present)
-mkdir -p docs
-cat > docs/init_step_two_b_frontend_bootstrap.md <<'MD'
-# Step 2(b): Frontend (Next.js) Bootstrap with SCSS & Parallax
-
-- Minimal Next.js app (TypeScript) with `/api/health`.
-- SCSS wired via `sass` dependency and `globals.scss`.
-- Reusable `<Parallax>` component and optional hero section gated by `NEXT_PUBLIC_PARALLAX`.
-- Dockerized; uses env ports: `${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}`.
-- Includes a safety fix to ensure `frontend:` lives under `services:` and not under `networks:`.
-- Pins ESLint to a version compatible with `eslint-config-next` (`8.57.0`) and uses `--legacy-peer-deps` to avoid peer dependency conflicts during npm install.
-MD
-if [ -f scripts/_pdf.sh ]; then source scripts/_pdf.sh; pdfify docs/init_step_two_b_frontend_bootstrap.md docs/init_step_two_b_frontend_bootstrap.pdf || true; fi
-
-echo "[2B] Done."
+echo "[2B-static-fix] Done. Please check 'docker compose logs frontend' to verify the frontend is running."

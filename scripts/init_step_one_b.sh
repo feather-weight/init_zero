@@ -121,7 +121,7 @@ services:
       - MONGO_DB_NAME=${MONGO_DB}
       - JWT_SECRET=${JWT_SECRET}
     ports:
-      - "8001:8001"
+      - "8000:8000"
     depends_on:
       - mongo
 

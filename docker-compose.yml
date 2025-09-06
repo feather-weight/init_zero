@@ -1,28 +1,29 @@
+version: "3.8"
+
 services:
   mongo:
     image: mongo:6.0
-    container_name: ${MONGO_SERVICE_NAME}
+    container_name: recoverer-mongo
     restart: unless-stopped
     ports:
-      - "${MONGO_PORT}:27017"
+      - "27017:27017"
     volumes:
       - ./.data/mongo:/data/db
-    command: ["--bind_ip_all"]
 
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: ${BACKEND_SERVICE_NAME}
+    container_name: recoverer-backend
     restart: unless-stopped
     environment:
-      - PROJECT_NAME=${PROJECT_NAME}
-      - API_BASE=${API_BASE}
-      - MONGO_URI=${MONGO_URI}
-      - MONGO_DB_NAME=${MONGO_DB_NAME}
-      - JWT_SECRET=${JWT_SECRET}
+      - PROJECT_NAME=wallet-recoverer
+      - API_BASE=/api
+      - MONGO_URI=mongodb://recoverer-mongo:27017/wallet_recoverer_db
+      - MONGO_DB_NAME=wallet_recoverer_db
+      - JWT_SECRET=changeme_fill_in_step_later
     ports:
-      - "${BACKEND_PORT}:${BACKEND_INTERNAL_PORT}"
+      - "8000:8000"
     depends_on:
       - mongo
 
@@ -30,19 +31,17 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-      args:
-        - FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}
-    container_name: ${FRONTEND_SERVICE_NAME}
+    container_name: recoverer-frontend
     restart: unless-stopped
     environment:
-      - PROJECT_NAME=${PROJECT_NAME}
-      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
-      - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}
+      - PROJECT_NAME=wallet-recoverer
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+      - NEXT_PUBLIC_PARALLAX=1
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}"
+      - "3000:3000"
+
 networks:
   default:
-    name: ${NETWORK_NAME}
-
+    name: recoverynet
