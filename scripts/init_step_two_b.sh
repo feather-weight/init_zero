@@ -1,0 +1,286 @@
+# Create revised init_step_two_b.sh (with SCSS + Parallax baked in) and a small package for download
+import os, zipfile, textwrap, json, pathlib
+
+root = "/mnt/data/revised_step2b"
+scripts_dir = os.path.join(root, "scripts")
+docs_dir = os.path.join(root, "docs")
+os.makedirs(scripts_dir, exist_ok=True)
+os.makedirs(docs_dir, exist_ok=True)
+
+script = r"""#!/usr/bin/env bash
+# Step 2(b) — Frontend (Next.js) bootstrap with SCSS + Parallax baked in
+# Safe to re-run: idempotent where possible.
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+dc() { if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then docker compose "$@"; else docker-compose "$@"; fi; }
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$root"
+
+echo "[2B] Ensure required env vars"
+touch .env
+grep -q '^PROJECT_NAME=' .env || echo 'PROJECT_NAME=wallet-recoverer' >> .env
+grep -q '^FRONTEND_PORT=' .env || echo 'FRONTEND_PORT=3000' >> .env
+grep -q '^FRONTEND_INTERNAL_PORT=' .env || echo 'FRONTEND_INTERNAL_PORT=3000' >> .env
+grep -q '^FRONTEND_SERVICE_NAME=' .env || echo 'FRONTEND_SERVICE_NAME=recoverer-frontend' >> .env
+grep -q '^NEXT_PUBLIC_PARALLAX=' .env || echo 'NEXT_PUBLIC_PARALLAX=1' >> .env
+# make sure backend URL exists (used in 2c, harmless here)
+grep -q '^NEXT_PUBLIC_BACKEND_URL=' .env || echo 'NEXT_PUBLIC_BACKEND_URL=http://localhost:8000' >> .env
+
+echo "[2B] Scaffolding frontend (Next.js + TypeScript + SCSS + Parallax)"
+mkdir -p frontend/pages/api frontend/pages frontend/public frontend/styles frontend/components
+
+cat > frontend/package.json <<'PKG'
+{
+  "name": "wallet-recoverer-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p ${FRONTEND_INTERNAL_PORT:-3000}",
+    "build": "next build",
+    "start": "next start -p ${FRONTEND_INTERNAL_PORT:-3000}",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.6",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "sass": "1.77.8"
+  },
+  "devDependencies": {
+    "typescript": "5.5.4",
+    "@types/react": "18.3.3",
+    "@types/node": "22.5.5",
+    "eslint": "9.9.1",
+    "eslint-config-next": "14.2.6"
+  }
+}
+PKG
+
+cat > frontend/tsconfig.json <<'TS'
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "es2022"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"]
+}
+TS
+
+cat > frontend/next.config.js <<'NC'
+/** @type {import('next').NextConfig} */
+const nextConfig = { reactStrictMode: true };
+module.exports = nextConfig;
+NC
+
+# Global SCSS with base parallax utilities
+cat > frontend/styles/globals.scss <<'SCSS'
+:root { color-scheme: light dark; }
+body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+.container { max-width: 880px; margin: 2rem auto; padding: 1rem; }
+.badge { display:inline-block; padding:.2rem .5rem; border-radius:.5rem; border:1px solid currentColor; font-size:.8rem; opacity:.8; }
+.hint { opacity:.7; font-size:.9rem; }
+
+.parallax {
+  position: relative;
+  min-height: 40vh;
+  display: grid;
+  place-items: center;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0,0,0,.4);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed; /* simple, compatible parallax */
+}
+.parallax--hero {
+  background-image:
+    linear-gradient(rgba(0,0,0,.25), rgba(0,0,0,.25)),
+    url('/parallax-hero.jpg');
+}
+
+/* accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .parallax { background-attachment: scroll; }
+}
+SCSS
+
+# Basic app wrapper imports SCSS
+cat > frontend/pages/_app.tsx <<'APP'
+import type { AppProps } from 'next/app';
+import '../styles/globals.scss';
+export default function App({ Component, pageProps }: AppProps) {
+  return <Component {...pageProps} />;
+}
+APP
+
+# Minimal Parallax component
+cat > frontend/components/Parallax.tsx <<'PARA'
+import React from 'react';
+type Props = { className?: string; children?: React.ReactNode };
+export default function Parallax({ className = '', children }: Props) {
+  return (
+    <section className={`parallax ${className}`} role="img" aria-label="Decorative parallax background">
+      <div>{children}</div>
+    </section>
+  );
+}
+PARA
+
+# Landing page with optional parallax hero (env-gated)
+cat > frontend/pages/index.tsx <<'IDX'
+import Head from 'next/head';
+import Parallax from '../components/Parallax';
+
+type Props = { project: string; parallax: boolean };
+
+export async function getServerSideProps() {
+  const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
+  const parallax = (process.env.NEXT_PUBLIC_PARALLAX ?? '1') === '1';
+  return { props: { project, parallax } };
+}
+
+export default function Home({ project, parallax }: Props) {
+  return (
+    <>
+      <Head><title>{project}</title></Head>
+      {parallax && (
+        <Parallax className="parallax--hero">
+          <h1 style={{margin:0}}>{project}</h1>
+        </Parallax>
+      )}
+      <main className="container">
+        <p className="hint">Watch-only wallet recovery — educational and defensive.</p>
+        <span className="badge">Step 2(b): Frontend bootstrap + SCSS + Parallax</span>
+      </main>
+    </>
+  );
+}
+IDX
+
+# Frontend API health
+cat > frontend/pages/api/health.ts <<'API'
+import type { NextApiRequest, NextApiResponse } from 'next';
+export default function handler(_req: NextApiRequest, res: NextApiResponse) {
+  res.status(200).json({ status: 'ok', service: 'frontend' });
+}
+API
+
+# Dockerfile for frontend
+cat > frontend/Dockerfile <<'DOCKER'
+FROM node:22-alpine
+ENV NEXT_TELEMETRY_DISABLED=1
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --no-audit --progress=false
+COPY frontend ./
+ARG FRONTEND_INTERNAL_PORT=3000
+ENV FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}
+EXPOSE ${FRONTEND_INTERNAL_PORT}
+CMD ["npm","run","start"]
+DOCKER
+
+# Provide a tiny placeholder hero if none exists (won't fail if convert not available)
+if [ ! -f frontend/public/parallax-hero.jpg ]; then
+  # create a tiny 1x1 png and save as jpg via printf (valid minimal JPEG header)
+  # fallback: just touch the file if conversion isn't available
+  printf '\xFF\xD8\xFF\xD9' > frontend/public/parallax-hero.jpg || touch frontend/public/parallax-hero.jpg
+fi
+
+# Extend docker-compose with frontend if not already present
+if ! grep -qE '^[[:space:]]*frontend:' docker-compose.yml 2>/dev/null; then
+  cat >> docker-compose.yml <<'YML'
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        - FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}
+    container_name: ${FRONTEND_SERVICE_NAME}
+    restart: unless-stopped
+    environment:
+      - PROJECT_NAME=${PROJECT_NAME}
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+      - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}"
+YML
+fi
+
+echo "[2B] Build & start frontend"
+dc build frontend
+dc up -d frontend
+
+# Docs
+mkdir -p docs
+cat > docs/init_step_two_b_frontend_bootstrap.md <<'MD'
+# Step 2(b): Frontend (Next.js) Bootstrap with SCSS & Parallax
+
+- Minimal Next.js app (TypeScript) with `/api/health`.
+- SCSS wired via `sass` dependency and `globals.scss`.
+- Reusable `<Parallax>` component and optional hero section gated by `NEXT_PUBLIC_PARALLAX`.
+- Dockerized; uses env ports: `${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}`.
+
+MD
+
+# Optional: convert to PDF (best-effort)
+if [ -f scripts/_pdf.sh ]; then
+  source scripts/_pdf.sh
+  pdfify docs/init_step_two_b_frontend_bootstrap.md docs/init_step_two_b_frontend_bootstrap.pdf || true
+fi
+
+echo "[2B] Done."
+"""
+
+test_script = r"""#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "[2B TEST] Checking FRONTEND_PORT"
+port="$(grep -E '^FRONTEND_PORT=' .env | cut -d= -f2 || true)"
+[[ -n "$port" ]] || { echo "Missing FRONTEND_PORT in .env"; exit 1; }
+
+echo "[2B TEST] /api/health"
+curl -fsS "http://localhost:${port}/api/health" | grep -q '"status":"ok"' && echo "OK: frontend health"
+
+echo "[2B TEST] GET /"
+curl -fsS "http://localhost:${port}/" >/dev/null && echo "OK: homepage loads"
+
+echo "PASS: 2(b)"
+"""
+
+doc = """# Step 2(b): Frontend (Next.js) Bootstrap with SCSS & Parallax
+
+This is the revised Step 2(b) that **bakes in SCSS and a Parallax hero** from the start.
+
+- Adds `sass` and `globals.scss`
+- Adds a `<Parallax>` component and optional hero (`NEXT_PUBLIC_PARALLAX=1`)
+- Creates a small placeholder image at `public/parallax-hero.jpg` if none exists
+- Dockerfile + Compose extension for the frontend
+"""
+
+open(os.path.join(scripts_dir, "init_step_two_b.sh"), "w").write(script)
+open(os.path.join(scripts_dir, "init_step_two_b_test.sh"), "w").write(test_script)
+open(os.path.join(docs_dir, "init_step_two_b_frontend_bootstrap.md"), "w").write(doc)
+
+# Make a zip package
+zip_path = "/mnt/data/revised_init_step_two_b_package.zip"
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+    for p in [os.path.join(scripts_dir, "init_step_two_b.sh"),
+              os.path.join(scripts_dir, "init_step_two_b_test.sh"),
+              os.path.join(docs_dir, "init_step_two_b_frontend_bootstrap.md")]:
+        z.write(p, arcname=os.path.relpath(p, root))
+
+zip_path
+
