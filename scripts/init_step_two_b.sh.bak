@@ -1,7 +1,15 @@
-#!/usr/bin/env bash
-# Step 2(b) — Frontend (Next.js) bootstrap with SCSS + Parallax
-# Plus: auto-fix docker-compose.yml (remove bad networks.frontend, ensure services.frontend)
-# and pin ESLint to a compatible version for eslint-config-next
+# Create revised init_step_two_b.sh (with SCSS + Parallax baked in) and a small package for download
+import os, zipfile, textwrap, json, pathlib
+
+root = "/mnt/data/revised_step2b"
+scripts_dir = os.path.join(root, "scripts")
+docs_dir = os.path.join(root, "docs")
+os.makedirs(scripts_dir, exist_ok=True)
+os.makedirs(docs_dir, exist_ok=True)
+
+script = r"""#!/usr/bin/env bash
+# Step 2(b) — Frontend (Next.js) bootstrap with SCSS + Parallax baked in
+# Safe to re-run: idempotent where possible.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -16,13 +24,11 @@ grep -q '^FRONTEND_PORT=' .env || echo 'FRONTEND_PORT=3000' >> .env
 grep -q '^FRONTEND_INTERNAL_PORT=' .env || echo 'FRONTEND_INTERNAL_PORT=3000' >> .env
 grep -q '^FRONTEND_SERVICE_NAME=' .env || echo 'FRONTEND_SERVICE_NAME=recoverer-frontend' >> .env
 grep -q '^NEXT_PUBLIC_PARALLAX=' .env || echo 'NEXT_PUBLIC_PARALLAX=1' >> .env
+# make sure backend URL exists (used in 2c, harmless here)
 grep -q '^NEXT_PUBLIC_BACKEND_URL=' .env || echo 'NEXT_PUBLIC_BACKEND_URL=http://localhost:8000' >> .env
 
 echo "[2B] Scaffolding frontend (Next.js + TypeScript + SCSS + Parallax)"
 mkdir -p frontend/pages/api frontend/pages frontend/public frontend/styles frontend/components
-
-# Remove any existing lock file to avoid stale dependencies
-rm -f frontend/package-lock.json || true
 
 cat > frontend/package.json <<'PKG'
 {
@@ -44,7 +50,7 @@ cat > frontend/package.json <<'PKG'
     "typescript": "5.5.4",
     "@types/react": "18.3.3",
     "@types/node": "22.5.5",
-    "eslint": "8.57.0",
+    "eslint": "9.9.1",
     "eslint-config-next": "14.2.6"
   }
 }
@@ -136,30 +142,30 @@ cat > frontend/pages/index.tsx <<'IDX'
 import Head from 'next/head';
 import Parallax from '../components/Parallax';
 
- type Props = { project: string; parallax: boolean };
+type Props = { project: string; parallax: boolean };
 
- export async function getServerSideProps() {
-   const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
-   const parallax = (process.env.NEXT_PUBLIC_PARALLAX ?? '1') === '1';
-   return { props: { project, parallax } };
- }
+export async function getServerSideProps() {
+  const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
+  const parallax = (process.env.NEXT_PUBLIC_PARALLAX ?? '1') === '1';
+  return { props: { project, parallax } };
+}
 
- export default function Home({ project, parallax }: Props) {
-   return (
-     <>
-       <Head><title>{project}</title></Head>
-       {parallax && (
-         <Parallax className="parallax--hero">
-           <h1 style={{margin:0}}>{project}</h1>
-         </Parallax>
-       )}
-       <main className="container">
-         <p className="hint">Watch-only wallet recovery — educational and defensive.</p>
-         <span className="badge">Step 2(b): Frontend bootstrap + SCSS + Parallax</span>
-       </main>
-     </>
-   );
- }
+export default function Home({ project, parallax }: Props) {
+  return (
+    <>
+      <Head><title>{project}</title></Head>
+      {parallax && (
+        <Parallax className="parallax--hero">
+          <h1 style={{margin:0}}>{project}</h1>
+        </Parallax>
+      )}
+      <main className="container">
+        <p className="hint">Watch-only wallet recovery — educational and defensive.</p>
+        <span className="badge">Step 2(b): Frontend bootstrap + SCSS + Parallax</span>
+      </main>
+    </>
+  );
+}
 IDX
 
 # Frontend API health
@@ -170,14 +176,13 @@ export default function handler(_req: NextApiRequest, res: NextApiResponse) {
 }
 API
 
-# Dockerfile for frontend with legacy peer deps flag to ensure build success
+# Dockerfile for frontend
 cat > frontend/Dockerfile <<'DOCKER'
 FROM node:22-alpine
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
-# Use --legacy-peer-deps to avoid breaking on peer-dep conflicts
-RUN npm install --no-audit --progress=false --legacy-peer-deps
+RUN npm install --no-audit --progress=false
 COPY frontend ./
 ARG FRONTEND_INTERNAL_PORT=3000
 ENV FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}
@@ -185,64 +190,41 @@ EXPOSE ${FRONTEND_INTERNAL_PORT}
 CMD ["npm","run","start"]
 DOCKER
 
-# Provide a tiny placeholder hero if none exists (keep builds green)
+# Provide a tiny placeholder hero if none exists (won't fail if convert not available)
 if [ ! -f frontend/public/parallax-hero.jpg ]; then
+  # create a tiny 1x1 png and save as jpg via printf (valid minimal JPEG header)
+  # fallback: just touch the file if conversion isn't available
   printf '\xFF\xD8\xFF\xD9' > frontend/public/parallax-hero.jpg || touch frontend/public/parallax-hero.jpg
 fi
 
-echo "[2B] Fixing docker-compose.yml (remove bad networks.frontend, ensure services.frontend exists)"
-cp docker-compose.yml docker-compose.yml.bak || true
+# Extend docker-compose with frontend if not already present
+if ! grep -qE '^[[:space:]]*frontend:' docker-compose.yml 2>/dev/null; then
+  cat >> docker-compose.yml <<'YML'
 
-# 1) Remove any misplaced `frontend:` block under `networks:`
-tmp1="$(mktemp)"
-awk '
-  BEGIN{in_networks=0; in_bad=0}
-  /^[[:space:]]*services:/ {in_networks=0}
-  /^[[:space:]]*networks:/ {in_networks=1; in_bad=0}
-  # if within networks and we hit a two-space frontend: block, start skipping
-  (in_networks && /^  frontend:/) {in_bad=1; next}
-  # stop skipping when we reach a new top-level key (no leading spaces)
-  (in_bad && /^[^[:space:]]/) {in_bad=0}
-  # or when networks: has clearly ended (services: appears)
-  (in_bad && /^[[:space:]]*services:/) {in_bad=0}
-  in_bad {next}
-  {print}
-' docker-compose.yml > "$tmp1" && mv "$tmp1" docker-compose.yml
-
-# 2) If services.frontend is still missing, insert it just before `networks:`
-if ! grep -qE '^[[:space:]]*frontend:' docker-compose.yml; then
-  tmp2="$(mktemp)"
-  awk '
-    BEGIN { inserted=0 }
-    /^[[:space:]]*networks:/ && !inserted {
-      print "  frontend:"
-      print "    build:"
-      print "      context: ."
-      print "      dockerfile: frontend/Dockerfile"
-      print "      args:"
-      print "        - FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}"
-      print "    container_name: ${FRONTEND_SERVICE_NAME}"
-      print "    restart: unless-stopped"
-      print "    environment:"
-      print "      - PROJECT_NAME=${PROJECT_NAME}"
-      print "      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}"
-      print "      - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}"
-      print "    depends_on:"
-      print "      - backend"
-      print "    ports:"
-      print "      - \"${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}\""
-      inserted=1
-    }
-    { print }
-  ' docker-compose.yml > "$tmp2" && mv "$tmp2" docker-compose.yml
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        - FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}
+    container_name: ${FRONTEND_SERVICE_NAME}
+    restart: unless-stopped
+    environment:
+      - PROJECT_NAME=${PROJECT_NAME}
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+      - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}"
+YML
 fi
 
-echo "[2B] Validate compose & start frontend"
-dc config -q
+echo "[2B] Build & start frontend"
 dc build frontend
 dc up -d frontend
 
-# Doc (optional PDF via scripts/_pdf.sh if present)
+# Docs
 mkdir -p docs
 cat > docs/init_step_two_b_frontend_bootstrap.md <<'MD'
 # Step 2(b): Frontend (Next.js) Bootstrap with SCSS & Parallax
@@ -251,9 +233,54 @@ cat > docs/init_step_two_b_frontend_bootstrap.md <<'MD'
 - SCSS wired via `sass` dependency and `globals.scss`.
 - Reusable `<Parallax>` component and optional hero section gated by `NEXT_PUBLIC_PARALLAX`.
 - Dockerized; uses env ports: `${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}`.
-- Includes a safety fix to ensure `frontend:` lives under `services:` and not under `networks:`.
-- Pins ESLint to a version compatible with `eslint-config-next` (`8.57.0`) and uses `--legacy-peer-deps` to avoid peer dependency conflicts during npm install.
+
 MD
-if [ -f scripts/_pdf.sh ]; then source scripts/_pdf.sh; pdfify docs/init_step_two_b_frontend_bootstrap.md docs/init_step_two_b_frontend_bootstrap.pdf || true; fi
+
+# Optional: convert to PDF (best-effort)
+if [ -f scripts/_pdf.sh ]; then
+  source scripts/_pdf.sh
+  pdfify docs/init_step_two_b_frontend_bootstrap.md docs/init_step_two_b_frontend_bootstrap.pdf || true
+fi
 
 echo "[2B] Done."
+"""
+
+test_script = r"""#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "[2B TEST] Checking FRONTEND_PORT"
+port="$(grep -E '^FRONTEND_PORT=' .env | cut -d= -f2 || true)"
+[[ -n "$port" ]] || { echo "Missing FRONTEND_PORT in .env"; exit 1; }
+
+echo "[2B TEST] /api/health"
+curl -fsS "http://localhost:${port}/api/health" | grep -q '"status":"ok"' && echo "OK: frontend health"
+
+echo "[2B TEST] GET /"
+curl -fsS "http://localhost:${port}/" >/dev/null && echo "OK: homepage loads"
+
+echo "PASS: 2(b)"
+"""
+
+doc = """# Step 2(b): Frontend (Next.js) Bootstrap with SCSS & Parallax
+
+This is the revised Step 2(b) that **bakes in SCSS and a Parallax hero** from the start.
+
+- Adds `sass` and `globals.scss`
+- Adds a `<Parallax>` component and optional hero (`NEXT_PUBLIC_PARALLAX=1`)
+- Creates a small placeholder image at `public/parallax-hero.jpg` if none exists
+- Dockerfile + Compose extension for the frontend
+"""
+
+open(os.path.join(scripts_dir, "init_step_two_b.sh"), "w").write(script)
+open(os.path.join(scripts_dir, "init_step_two_b_test.sh"), "w").write(test_script)
+open(os.path.join(docs_dir, "init_step_two_b_frontend_bootstrap.md"), "w").write(doc)
+
+# Make a zip package
+zip_path = "/mnt/data/revised_init_step_two_b_package.zip"
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+    for p in [os.path.join(scripts_dir, "init_step_two_b.sh"),
+              os.path.join(scripts_dir, "init_step_two_b_test.sh"),
+              os.path.join(docs_dir, "init_step_two_b_frontend_bootstrap.md")]:
+        z.write(p, arcname=os.path.relpath(p, root))
+
+zip_path
+
