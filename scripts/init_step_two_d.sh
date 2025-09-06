@@ -1,74 +1,188 @@
 #!/usr/bin/env bash
+#
+# Step 2(d) fix script
+#
+# This script fixes the dual parallax backgrounds and light/dark theme toggle
+# for the wallet‑recoverer frontend. It assumes the project uses the
+# pages router (frontend/pages) and that your parallax images are stored
+# in `frontend/public/parallax-dark.jpg` and `frontend/public/parallax-light.jpg`.
+#
+# The script performs the following operations:
+#   1. Verifies that the images exist in the public folder.
+#   2. Writes a robust ThemeToggle component that persists the user's
+#      theme choice and toggles a data-theme attribute on the <html> tag.
+#   3. Updates globals.scss to define CSS variables for the hero
+#      background and overlay in light and dark mode, and applies
+#      parallax via `background-attachment: fixed`.
+#   4. Updates pages/_app.tsx to mount the ThemeToggle and set the
+#      initial theme on load.
+#   5. Rebuilds and restarts the frontend service via docker compose.
+
 set -Eeuo pipefail
-IFS=$'\n\t'
 
-dc() { if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then docker compose "$@"; else docker-compose "$@"; fi; }
-root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-cd "$root"
+# Determine repository root
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$ROOT"
 
-echo "[2D] Ensure env flag for parallax"
-grep -q '^NEXT_PUBLIC_PARALLAX=' .env || echo 'NEXT_PUBLIC_PARALLAX=1' >> .env
+IMG_DARK="frontend/public/parallax-dark.jpg"
+IMG_LIGHT="frontend/public/parallax-light.jpg"
 
-echo "[2D] Ensure public/ exists and note images"
-mkdir -p frontend/public
-# (User should copy their images into these exact paths)
-#   frontend/public/parallax-dark.jpg
-#   frontend/public/parallax-light.jpg
+# Check that images exist
+if [[ ! -f "$IMG_DARK" || ! -f "$IMG_LIGHT" ]]; then
+  echo "Error: parallax images not found. Please ensure you have placed your" >&2
+  echo "dark mode image at $IMG_DARK and light mode image at $IMG_LIGHT." >&2
+  exit 1
+fi
 
-echo "[2D] Add ThemeToggle and Theme bootstrap"
-
+echo "[2D-fix] Updating ThemeToggle component"
 mkdir -p frontend/components
-
 cat > frontend/components/ThemeToggle.tsx <<'TSX'
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 export default function ThemeToggle() {
-  const [theme, setTheme] = React.useState<string | null>(null);
+  // Hydration-safe theme state.  We initialise undefined and then set
+  // from localStorage or prefers-color-scheme in useEffect.
+  const [theme, setTheme] = useState<'light' | 'dark'>();
 
-  React.useEffect(() => {
-    // hydration-safe read
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
-    if (saved === 'light' || saved === 'dark') {
-      setTheme(saved);
-      document.documentElement.setAttribute('data-theme', saved);
-    } else {
-      // fallback to prefers-color-scheme
-      const prefersDark = typeof window !== 'undefined' &&
-        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const initial = prefersDark ? 'dark' : 'light';
-      setTheme(initial);
-      document.documentElement.setAttribute('data-theme', initial);
-      localStorage.setItem('theme', initial);
-    }
+  // On mount, set the initial theme.
+  useEffect(() => {
+    const saved = typeof window !== 'undefined'
+      ? (localStorage.getItem('theme') as 'light' | 'dark' | null)
+      : null;
+    const prefersDark = typeof window !== 'undefined'
+      && window.matchMedia
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initial = saved ?? (prefersDark ? 'dark' : 'light');
+    setTheme(initial);
+    document.documentElement.setAttribute('data-theme', initial);
+    localStorage.setItem('theme', initial);
   }, []);
 
-  const toggle = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
+  // Toggle handler
+  const flip = () => {
+    const next: 'light' | 'dark' = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('theme', next);
   };
 
+  // Render a simple button with emoji indicator. Avoid SSR mismatch by
+  // defaulting to null until theme is set.
   return (
-    <button aria-label="Toggle color scheme" onClick={toggle} style={{marginLeft: 'auto'}}>
+    <button onClick={flip} aria-label="Toggle colour theme">
       {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
     </button>
   );
 }
 TSX
 
-echo "[2D] Update _app.tsx to mount toggle in a simple header"
-# safe replace to ensure import of scss and toggle header
+echo "[2D-fix] Updating globals.scss for dual parallax backgrounds"
+mkdir -p frontend/styles
+cat > frontend/styles/globals.scss <<'SCSS'
+/* Base colour scheme and CSS variables for parallax backgrounds. */
+
+:root {
+  color-scheme: light dark;
+  /* Default (light) hero image and overlay. */
+  --hero-image: url('/parallax-light.jpg');
+  --overlay: rgba(0, 0, 0, 0.25);
+}
+
+/* Dark theme variables: override image and overlay. */
+html[data-theme='dark'] {
+  --hero-image: url('/parallax-dark.jpg');
+  --overlay: rgba(0, 0, 0, 0.35);
+}
+
+/* Fallback for system dark mode when no explicit theme is stored. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hero-image: url('/parallax-dark.jpg');
+    --overlay: rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* Basic typography and layout */
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  /* Dual-layer parallax: overlay gradient and hero image. */
+  background-image: linear-gradient(var(--overlay), var(--overlay)), var(--hero-image);
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 880px;
+  margin: 2rem auto;
+  padding: 1rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid currentColor;
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.hint {
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+
+/* Parallax container for hero content */
+.parallax {
+  position: relative;
+  min-height: 40vh;
+  display: grid;
+  place-items: center;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+.parallax--hero {
+  /* Use the CSS variables for the hero section background. */
+  background-image: linear-gradient(var(--overlay), var(--overlay)), var(--hero-image);
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  body, .parallax {
+    background-attachment: scroll;
+  }
+}
+SCSS
+
+echo "[2D-fix] Updating _app.tsx to initialise theme and mount toggle"
+mkdir -p frontend/pages
 cat > frontend/pages/_app.tsx <<'APP'
 import type { AppProps } from 'next/app';
 import '../styles/globals.scss';
 import ThemeToggle from '../components/ThemeToggle';
+import { useEffect } from 'react';
 
 export default function App({ Component, pageProps }: AppProps) {
+  // On mount, ensure the HTML element has a data-theme attribute.
+  useEffect(() => {
+    const saved = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initial = (saved as 'light' | 'dark' | null) ?? (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', initial);
+    localStorage.setItem('theme', initial);
+  }, []);
+
   return (
     <>
-      <header style={{display:'flex', alignItems:'center', gap:'1rem', padding:'0.75rem 1rem'}}>
-        <strong>wallet-recoverer</strong>
+      <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem' }}>
+        <strong>wallet‑recoverer</strong>
         <ThemeToggle />
       </header>
       <Component {...pageProps} />
@@ -77,122 +191,14 @@ export default function App({ Component, pageProps }: AppProps) {
 }
 APP
 
-echo "[2D] Update globals.scss with theme CSS vars and dual parallax"
-# Convert to SCSS if not already present (Step 2b created it)
-mkdir -p frontend/styles
-cat > frontend/styles/globals.scss <<'SCSS'
-:root {
-  color-scheme: light dark;
-  --hero-image: url('/parallax-light.jpg');
-  --overlay: rgba(0,0,0,.25);
-}
-
-html[data-theme="dark"] {
-  --hero-image: url('/parallax-dark.jpg');
-  --overlay: rgba(0,0,0,.35);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root { --hero-image: url('/parallax-dark.jpg'); --overlay: rgba(0,0,0,.35); }
-}
-
-/* base */
-body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-.container { max-width: 880px; margin: 2rem auto; padding: 1rem; }
-.badge { display:inline-block; padding:.2rem .5rem; border-radius:.5rem; border:1px solid currentColor; font-size:.8rem; opacity:.8; }
-.hint { opacity:.7; font-size:.9rem; }
-
-/* Parallax */
-.parallax {
-  position: relative;
-  min-height: 40vh;
-  display: grid;
-  place-items: center;
-  color: white;
-  text-shadow: 0 1px 2px rgba(0,0,0,.4);
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed; /* simple, compatible parallax */
-}
-
-.parallax--hero {
-  /* dual-mode background chosen by CSS var */
-  background-image: linear-gradient(var(--overlay), var(--overlay)), var(--hero-image);
-}
-
-/* Accessibility: respect reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .parallax { background-attachment: scroll; }
-}
-SCSS
-
-echo "[2D] Ensure homepage keeps parallax gated by env and shows backend status if present"
-cat > frontend/pages/index.tsx <<'IDX'
-import Head from 'next/head';
-
-type Props = { project: string; parallax: boolean; backendStatus: string };
-
-export async function getServerSideProps() {
-  const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
-  const parallax = (process.env.NEXT_PUBLIC_PARALLAX ?? '1') === '1';
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8000';
-  let backendStatus = 'unknown';
-  try {
-    const res = await fetch(`${base}/health`, { cache: 'no-store' });
-    backendStatus = res.ok ? (await res.json())?.status ?? 'unknown' : `http ${res.status}`;
-  } catch {
-    backendStatus = 'unreachable';
-  }
-  return { props: { project, parallax, backendStatus } };
-}
-
-export default function Home({ project, parallax, backendStatus }: Props) {
-  return (
-    <>
-      <Head><title>{project}</title></Head>
-      {parallax && (
-        <section className="parallax parallax--hero" role="img" aria-label="Decorative parallax background">
-          <h1 style={{margin:0}}>{project}</h1>
-        </section>
-      )}
-      <main className="container">
-        <p className="hint">Watch-only wallet recovery — educational and defensive.</p>
-        <p><strong>Backend:</strong> <span className="badge">{backendStatus}</span></p>
-        <span className="badge">Step 2(d): Theme toggle + dual parallax</span>
-      </main>
-    </>
-  );
-}
-IDX
-
-echo "[2D] Extend compose only if frontend service is missing (usually present from 2b)"
-# no compose changes if already added in 2(b); just rebuild
-echo "[2D] Build & restart frontend"
-dc build frontend
-dc up -d frontend
-
-echo "[2D] Write doc"
-mkdir -p docs
-cat > docs/init_step_two_d_theme_and_dual_parallax.md <<'MD'
-# Step 2(d): Theme Toggle + Dual Parallax
-
-- Adds a light/dark toggle persisted in localStorage with `prefers-color-scheme` fallback.
-- Parallax hero uses CSS variables so the background image swaps by theme:
-  - Light → `/parallax-light.jpg`
-  - Dark →  `/parallax-dark.jpg`
-- Respects `NEXT_PUBLIC_PARALLAX` in `.env` (1 on, 0 off).
-- Accessible: background-attachment relaxes if user prefers reduced motion.
-
-Place your images at:
-- `frontend/public/parallax-dark.jpg`
-- `frontend/public/parallax-light.jpg`
-MD
-
-# Try to PDF if your environment has a converter; otherwise skip
-if [[ -f scripts/_pdf.sh ]]; then
-  source scripts/_pdf.sh
-  pdfify docs/init_step_two_d_theme_and_dual_parallax.md docs/init_step_two_d_theme_and_dual_parallax.pdf || true
+echo "[2D-fix] Fix complete. Rebuilding frontend container..."
+# Rebuild and restart the frontend service to pick up changes
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  docker compose build frontend
+  docker compose up -d frontend
+else
+  docker-compose build frontend
+  docker-compose up -d frontend
 fi
 
-echo "[2D] Done."
-
+echo "[2D-fix] Done. Test the frontend at http://localhost:3000 and toggle themes."
