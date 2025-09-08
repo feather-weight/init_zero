@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
-      - API_BASE={API_BASE}
+      - API_BASE=${API_BASE}
       - MONGO_URI=${MONGO_URI}
       - MDB_NAME=${MONGO_DB}
       - JWT_SECRET=${JWT_SECRET}

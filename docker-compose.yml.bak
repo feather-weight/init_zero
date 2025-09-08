@@ -1,48 +1,49 @@
+version: "3.8"
+
 services:
   mongo:
     image: mongo:6.0
-    container_name: ${MONGO_SERVICE_NAME}
+    container_name: ${MDB_CONTAINER_NAME}
     restart: unless-stopped
     ports:
-      - "${MONGO_PORT}:27017"
+      - "27017:27017"
     volumes:
       - ./.data/mongo:/data/db
-    command: ["--bind_ip_all"]
 
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: ${BE_SERVICE_NAME}
+    container_name: ${BE_CONTAINER_NAME}
     restart: unless-stopped
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
-      - API_BASE=${API_BASE}
+      - API_BASE={API_BASE}
       - MONGO_URI=${MONGO_URI}
-      - MDB_NAME=${MDB_NAME}
+      - MDB_NAME=${MONGO_DB}
       - JWT_SECRET=${JWT_SECRET}
     ports:
-      - "${BE_PORT}:${BE_INTERNAL_PORT}"
+      - "${BE_PORT}:${BE_PORT}"
     depends_on:
       - mongo
 
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
-      args:
-        - FE_INTERNAL_PORT=${FE_INTERNAL_PORT}
-    container_name: ${FE_SERVICE_NAME}
+      dockerfile: Dockerfile
+      working_dir: ${WORKING_DIR}
+    container_name: ${FE_CONTAINER_NAME}
     restart: unless-stopped
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
       - NEXT_PUBLIC_BE_URL=${NEXT_PUBLIC_BE_URL}
-      - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}
+      - NEXT_PUBLIC_PARALLAX=true
+      - PORT=${FE_PORT}
     depends_on:
       - backend
     ports:
-      - "${FE_PORT}:${FE_INTERNAL_PORT}"
+      - "${FE_PORT}:${FE_PORT}"
+
 networks:
   default:
     name: ${NETWORK_NAME}
-
