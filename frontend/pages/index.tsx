@@ -5,7 +5,7 @@ type Props = { project: string; parallax: boolean; backendStatus: string };
 export async function getServerSideProps() {
   const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
   const parallax = (process.env.NEXT_PUBLIC_PARALLAX ?? '1') === '1';
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8000';
+  const base = process.env.NEXT_PUBLIC_BE_URL ?? 'http://localhost:8000';
   let backendStatus = 'unknown';
   try {
     const res = await fetch(`${base}/health`, { cache: 'no-store' });

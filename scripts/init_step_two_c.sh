@@ -6,9 +6,9 @@ dc() { if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
-# Ensure NEXT_PUBLIC_BACKEND_URL exists
-if ! grep -q '^NEXT_PUBLIC_BACKEND_URL=' .env; then
-  echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:8000" >> .env
+# Ensure NEXT_PUBLIC_BE_URL exists
+if ! grep -q '^NEXT_PUBLIC_BE_URL=' .env; then
+  echo "NEXT_PUBLIC_BE_URL=http://localhost:8000" >> .env
 fi
 
 # Patch index.tsx to fetch backend health on the server (SSR)
@@ -19,7 +19,7 @@ type Props = { project: string; backendStatus: string };
 
 export async function getServerSideProps() {
   const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8000';
+  const base = process.env.NEXT_PUBLIC_BE_URL ?? 'http://localhost:8000';
   let backendStatus = 'unknown';
   try {
     const res = await fetch(`${base}/health`, { cache: 'no-store' });
@@ -55,16 +55,16 @@ dc build --no-cache frontend
 dc up -d frontend
 
 # docs
-cat > docs/init_step_two_c_frontend_backend_wiring.md <<'MD'
+cat > docs/init_step_two_c_FE_BE_wiring.md <<'MD'
 # Step 2(c): Frontend ↔ Backend Wiring (SSR)
 
-- Homepage calls `${NEXT_PUBLIC_BACKEND_URL}/health` on the server.
+- Homepage calls `${NEXT_PUBLIC_BE_URL}/health` on the server.
 - Displays backend status badge so you can confirm cross-service connectivity at a glance.
 - All ports/URLs pulled from `.env`.
 
 MD
 source scripts/_pdf.sh
-pdfify docs/init_step_two_c_frontend_backend_wiring.md docs/init_step_two_c_frontend_backend_wiring.pdf
+pdfify docs/init_step_two_c_FE_BE_wiring.md docs/init_step_two_c_FE_BE_wiring.pdf
 
 echo "[2C] Done."
 

@@ -41,7 +41,7 @@ services:
       - PROJECT_NAME=wallet-recoverer
       - API_BASE=/api
       - MONGO_URI=mongodb://recoverer-mongo:27017/wallet_recoverer_db
-      - MONGO_DB_NAME=wallet_recoverer_db
+      - MDB_NAME=wallet_recoverer_db
       - JWT_SECRET=changeme_fill_in_step_later
     ports:
       - "8000:8000"
@@ -56,7 +56,7 @@ services:
     restart: unless-stopped
     environment:
       - PROJECT_NAME=wallet-recoverer
-      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+      - NEXT_PUBLIC_BE_URL=http://localhost:8000
       - NEXT_PUBLIC_PARALLAX=1
     depends_on:
       - backend

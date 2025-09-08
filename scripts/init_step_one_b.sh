@@ -118,7 +118,7 @@ services:
       - PROJECT_NAME=${PROJECT_NAME}
       - API_BASE=${API_BASE}
       - MONGO_URI=${MONGO_URI}
-      - MONGO_DB_NAME=${MONGO_DB}
+      - MDB_NAME=${MONGO_DB}
       - JWT_SECRET=${JWT_SECRET}
     ports:
       - "8000:8000"
@@ -137,13 +137,13 @@ dc up -d backend
 echo "==> Verify /health"
 # Try curl, fallback to wget
 if command -v curl >/dev/null 2>&1; then
-  curl -fsS http://localhost:8000/health | tee /tmp/backend_health.json
+  curl -fsS http://localhost:8000/health | tee /tmp/BE_health.json
 else
-  wget -qO- http://localhost:8000/health | tee /tmp/backend_health.json
+  wget -qO- http://localhost:8000/health | tee /tmp/BE_health.json
 fi
 
 echo "==> Generate step PDF"
-cat > scripts/init_step_one_b_scaffold_backend_healthcheck.md <<'MD'
+cat > scripts/init_step_one_b_scaffold_BE_healthcheck.md <<'MD'
 # Step 1(b): Scaffold Backend Healthcheck
 
 This step adds a minimal **FastAPI** backend with a `/health` route, permissive CORS (dev), a pinned `requirements.txt`, and a small Python 3.12-slim Dockerfile. Docker Compose is extended to include the backend alongside Mongo.
@@ -154,8 +154,8 @@ This step adds a minimal **FastAPI** backend with a `/health` route, permissive 
 MD
 
 docker run --rm -v "$PWD":/workdir pandoc/latex:3.1 \
-  -o scripts/init_step_one_b_scaffold_backend_healthcheck.pdf \
-  scripts/init_step_one_b_scaffold_backend_healthcheck.md || {
+  -o scripts/init_step_one_b_scaffold_BE_healthcheck.pdf \
+  scripts/init_step_one_b_scaffold_BE_healthcheck.md || {
     echo "WARN: Pandoc container not available now. MD generated; you can convert later."
 }
 

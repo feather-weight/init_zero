@@ -20,12 +20,12 @@ cd "$root"
 echo "[2B] Ensure required env vars"
 touch .env
 grep -q '^PROJECT_NAME=' .env || echo 'PROJECT_NAME=wallet-recoverer' >> .env
-grep -q '^FRONTEND_PORT=' .env || echo 'FRONTEND_PORT=3000' >> .env
-grep -q '^FRONTEND_INTERNAL_PORT=' .env || echo 'FRONTEND_INTERNAL_PORT=3000' >> .env
-grep -q '^FRONTEND_SERVICE_NAME=' .env || echo 'FRONTEND_SERVICE_NAME=recoverer-frontend' >> .env
+grep -q '^FE_PORT=' .env || echo 'FE_PORT=3000' >> .env
+grep -q '^FE_INTERNAL_PORT=' .env || echo 'FE_INTERNAL_PORT=3000' >> .env
+grep -q '^FE_SERVICE_NAME=' .env || echo 'FE_SERVICE_NAME=recoverer-frontend' >> .env
 grep -q '^NEXT_PUBLIC_PARALLAX=' .env || echo 'NEXT_PUBLIC_PARALLAX=1' >> .env
 # make sure backend URL exists (used in 2c, harmless here)
-grep -q '^NEXT_PUBLIC_BACKEND_URL=' .env || echo 'NEXT_PUBLIC_BACKEND_URL=http://localhost:8000' >> .env
+grep -q '^NEXT_PUBLIC_BE_URL=' .env || echo 'NEXT_PUBLIC_BE_URL=http://localhost:8000' >> .env
 
 echo "[2B] Scaffolding frontend (Next.js + TypeScript + SCSS + Parallax)"
 mkdir -p frontend/pages/api frontend/pages frontend/public frontend/styles frontend/components
@@ -35,9 +35,9 @@ cat > frontend/package.json <<'PKG'
   "name": "wallet-recoverer-frontend",
   "private": true,
   "scripts": {
-    "dev": "next dev -p ${FRONTEND_INTERNAL_PORT:-3000}",
+    "dev": "next dev -p ${FE_INTERNAL_PORT:-3000}",
     "build": "next build",
-    "start": "next start -p ${FRONTEND_INTERNAL_PORT:-3000}",
+    "start": "next start -p ${FE_INTERNAL_PORT:-3000}",
     "lint": "next lint"
   },
   "dependencies": {
@@ -184,9 +184,9 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install --no-audit --progress=false
 COPY frontend ./
-ARG FRONTEND_INTERNAL_PORT=3000
-ENV FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}
-EXPOSE ${FRONTEND_INTERNAL_PORT}
+ARG FE_INTERNAL_PORT=3000
+ENV FE_INTERNAL_PORT=${FE_INTERNAL_PORT}
+EXPOSE ${FE_INTERNAL_PORT}
 CMD ["npm","run","start"]
 DOCKER
 
@@ -206,17 +206,17 @@ if ! grep -qE '^[[:space:]]*frontend:' docker-compose.yml 2>/dev/null; then
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        - FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}
-    container_name: ${FRONTEND_SERVICE_NAME}
+        - FE_INTERNAL_PORT=${FE_INTERNAL_PORT}
+    container_name: ${FE_SERVICE_NAME}
     restart: unless-stopped
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
-      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+      - NEXT_PUBLIC_BE_URL=${NEXT_PUBLIC_BE_URL}
       - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}"
+      - "${FE_PORT}:${FE_INTERNAL_PORT}"
 YML
 fi
 
@@ -226,20 +226,20 @@ dc up -d frontend
 
 # Docs
 mkdir -p docs
-cat > docs/init_step_two_b_frontend_bootstrap.md <<'MD'
+cat > docs/init_step_two_b_FE_bootstrap.md <<'MD'
 # Step 2(b): Frontend (Next.js) Bootstrap with SCSS & Parallax
 
 - Minimal Next.js app (TypeScript) with `/api/health`.
 - SCSS wired via `sass` dependency and `globals.scss`.
 - Reusable `<Parallax>` component and optional hero section gated by `NEXT_PUBLIC_PARALLAX`.
-- Dockerized; uses env ports: `${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}`.
+- Dockerized; uses env ports: `${FE_PORT}:${FE_INTERNAL_PORT}`.
 
 MD
 
 # Optional: convert to PDF (best-effort)
 if [ -f scripts/_pdf.sh ]; then
   source scripts/_pdf.sh
-  pdfify docs/init_step_two_b_frontend_bootstrap.md docs/init_step_two_b_frontend_bootstrap.pdf || true
+  pdfify docs/init_step_two_b_FE_bootstrap.md docs/init_step_two_b_FE_bootstrap.pdf || true
 fi
 
 echo "[2B] Done."
@@ -247,9 +247,9 @@ echo "[2B] Done."
 
 test_script = r"""#!/usr/bin/env bash
 set -Eeuo pipefail
-echo "[2B TEST] Checking FRONTEND_PORT"
-port="$(grep -E '^FRONTEND_PORT=' .env | cut -d= -f2 || true)"
-[[ -n "$port" ]] || { echo "Missing FRONTEND_PORT in .env"; exit 1; }
+echo "[2B TEST] Checking FE_PORT"
+port="$(grep -E '^FE_PORT=' .env | cut -d= -f2 || true)"
+[[ -n "$port" ]] || { echo "Missing FE_PORT in .env"; exit 1; }
 
 echo "[2B TEST] /api/health"
 curl -fsS "http://localhost:${port}/api/health" | grep -q '"status":"ok"' && echo "OK: frontend health"
@@ -272,14 +272,14 @@ This is the revised Step 2(b) that **bakes in SCSS and a Parallax hero** from th
 
 open(os.path.join(scripts_dir, "init_step_two_b.sh"), "w").write(script)
 open(os.path.join(scripts_dir, "init_step_two_b_test.sh"), "w").write(test_script)
-open(os.path.join(docs_dir, "init_step_two_b_frontend_bootstrap.md"), "w").write(doc)
+open(os.path.join(docs_dir, "init_step_two_b_FE_bootstrap.md"), "w").write(doc)
 
 # Make a zip package
 zip_path = "/mnt/data/revised_init_step_two_b_package.zip"
 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
     for p in [os.path.join(scripts_dir, "init_step_two_b.sh"),
               os.path.join(scripts_dir, "init_step_two_b_test.sh"),
-              os.path.join(docs_dir, "init_step_two_b_frontend_bootstrap.md")]:
+              os.path.join(docs_dir, "init_step_two_b_FE_bootstrap.md")]:
         z.write(p, arcname=os.path.relpath(p, root))
 
 zip_path

@@ -37,26 +37,26 @@ add_env_if_missing API_BASE "/api"
 
 # Host-published ports
 add_env_if_missing MONGO_PORT "27017"
-add_env_if_missing BACKEND_PORT "8000"
-add_env_if_missing FRONTEND_PORT "3000"
+add_env_if_missing BE_PORT "8000"
+add_env_if_missing FE_PORT "3000"
 
 # Internal container ports
-add_env_if_missing BACKEND_INTERNAL_PORT "8000"
-add_env_if_missing FRONTEND_INTERNAL_PORT "3000"
+add_env_if_missing BE_INTERNAL_PORT "8000"
+add_env_if_missing FE_INTERNAL_PORT "3000"
 
 # Network + service names
 add_env_if_missing NETWORK_NAME "recoverynet"
 add_env_if_missing MONGO_SERVICE_NAME "recoverer-mongo"
-add_env_if_missing BACKEND_SERVICE_NAME "recoverer-backend"
-add_env_if_missing FRONTEND_SERVICE_NAME "recoverer-frontend"
+add_env_if_missing BE_SERVICE_NAME "recoverer-backend"
+add_env_if_missing FE_SERVICE_NAME "recoverer-frontend"
 
 # UI feature flags
 add_env_if_missing NEXT_PUBLIC_PARALLAX "1"
 
 # Cross-service URL for frontend -> backend
-BACKEND_PORT_VAL="$(grep -E '^BACKEND_PORT=' .env | cut -d= -f2 || true)"
-: "${BACKEND_PORT_VAL:=8000}"
-add_env_if_missing NEXT_PUBLIC_BACKEND_URL "http://localhost:${BACKEND_PORT_VAL}"
+BE_PORT_VAL="$(grep -E '^BE_PORT=' .env | cut -d= -f2 || true)"
+: "${BE_PORT_VAL:=8000}"
+add_env_if_missing NEXT_PUBLIC_BE_URL "http://localhost:${BE_PORT_VAL}"
 
 # Mongo URI + DB name
 if ! grep -qE '^MONGO_URI=' .env; then
@@ -65,7 +65,7 @@ if ! grep -qE '^MONGO_URI=' .env; then
   echo "MONGO_URI=mongodb://mongo:${MONGO_PORT_VAL}/wallet_recoverer_db" >> .env
   echo "  + .env -> MONGO_URI=mongodb://mongo:${MONGO_PORT_VAL}/wallet_recoverer_db"
 fi
-add_env_if_missing MONGO_DB_NAME "wallet_recoverer_db"
+add_env_if_missing MDB_NAME "wallet_recoverer_db"
 
 # Secrets & provider keys (do not overwrite if present)
 add_env_if_missing JWT_SECRET "changeme_fill_in_step_later"
@@ -90,16 +90,16 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: ${BACKEND_SERVICE_NAME}
+    container_name: ${BE_SERVICE_NAME}
     restart: unless-stopped
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
       - API_BASE=${API_BASE}
       - MONGO_URI=${MONGO_URI}
-      - MONGO_DB_NAME=${MONGO_DB_NAME}
+      - MDB_NAME=${MDB_NAME}
       - JWT_SECRET=${JWT_SECRET}
     ports:
-      - "${BACKEND_PORT}:${BACKEND_INTERNAL_PORT}"
+      - "${BE_PORT}:${BE_INTERNAL_PORT}"
     depends_on:
       - mongo
 

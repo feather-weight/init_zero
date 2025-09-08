@@ -11,11 +11,11 @@ if [ -n "${ZSH_VERSION:-}" ]; then exec /usr/bin/env bash "$0" "$@"; fi
 #
 # • Cleans up `docker-compose.yml` by removing invalid keys under
 #   `services.frontend.build` (e.g. `working_dir`) and by wiring
-#   `${BE_PORT}` to `${BACKEND_PORT}` where necessary.  A backup of
+#   `${BE_PORT}` to `${BE_PORT}` where necessary.  A backup of
 #   your compose file is created with a timestamp extension.
 #
 # • Writes a robust `frontend/Dockerfile` that does not suffer from
-#   unexpanded `${FRONTEND_INTERNAL_PORT}` variables.  It uses a
+#   unexpanded `${FE_INTERNAL_PORT}` variables.  It uses a
 #   standard `PORT` environment variable and launches Next.js with
 #   `next start -H 0.0.0.0 -p ${PORT}`.  This prevents port‐related
 #   errors and ensures the app binds to all interfaces.
@@ -66,12 +66,12 @@ add_env_if_missing() {
 
 # Ports for services (host side)
 add_env_if_missing MONGO_PORT "27017"
-add_env_if_missing BACKEND_PORT "8000"
-add_env_if_missing FRONTEND_PORT "3000"
+add_env_if_missing BE_PORT "8000"
+add_env_if_missing FE_PORT "3000"
 # Network name
 add_env_if_missing NETWORK_NAME "recoverynet"
 # Backend URL for the frontend to call
-add_env_if_missing BACKEND_URL "http://localhost:${BACKEND_PORT:-8000}"
+add_env_if_missing BE_URL "http://localhost:${BE_PORT:-8000}"
 # Parallax enabled flag
 add_env_if_missing PARALLAX_ENABLED "true"
 
@@ -93,9 +93,9 @@ if svc:
     if isinstance(build, dict):
         allowed = {'context','dockerfile','args','target','cache_from','cache_to','labels','ssh','network'}
         svc['build'] = {k:v for k,v in build.items() if k in allowed}
-    # Replace ${BE_PORT} with ${BACKEND_PORT:-8000}
+    # Replace ${BE_PORT} with ${BE_PORT:-8000}
     def fix_port(s):
-        return s.replace('${BE_PORT}','${BACKEND_PORT:-8000}') if isinstance(s,str) else s
+        return s.replace('${BE_PORT}','${BE_PORT:-8000}') if isinstance(s,str) else s
     svc = {k: fix_port(v) for k,v in svc.items()}
     data['services']['frontend'] = svc
 # Write back
@@ -267,8 +267,8 @@ docker compose up -d frontend
 
 echo "[repair] Checking frontend health"
 sleep 1
-if curl -fsS "http://localhost:${FRONTEND_PORT:-3000}/api/health" >/dev/null; then
-  echo "[repair] Frontend is responding at http://localhost:${FRONTEND_PORT:-3000}"
+if curl -fsS "http://localhost:${FE_PORT:-3000}/api/health" >/dev/null; then
+  echo "[repair] Frontend is responding at http://localhost:${FE_PORT:-3000}"
 else
   echo "[repair] WARNING: Frontend did not respond to /api/health"
 fi

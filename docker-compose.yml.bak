@@ -13,16 +13,16 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: ${BACKEND_SERVICE_NAME}
+    container_name: ${BE_SERVICE_NAME}
     restart: unless-stopped
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
       - API_BASE=${API_BASE}
       - MONGO_URI=${MONGO_URI}
-      - MONGO_DB_NAME=${MONGO_DB_NAME}
+      - MDB_NAME=${MDB_NAME}
       - JWT_SECRET=${JWT_SECRET}
     ports:
-      - "${BACKEND_PORT}:${BACKEND_INTERNAL_PORT}"
+      - "${BE_PORT}:${BE_INTERNAL_PORT}"
     depends_on:
       - mongo
 
@@ -31,17 +31,17 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        - FRONTEND_INTERNAL_PORT=${FRONTEND_INTERNAL_PORT}
-    container_name: ${FRONTEND_SERVICE_NAME}
+        - FE_INTERNAL_PORT=${FE_INTERNAL_PORT}
+    container_name: ${FE_SERVICE_NAME}
     restart: unless-stopped
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
-      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+      - NEXT_PUBLIC_BE_URL=${NEXT_PUBLIC_BE_URL}
       - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}"
+      - "${FE_PORT}:${FE_INTERNAL_PORT}"
 networks:
   default:
     name: ${NETWORK_NAME}

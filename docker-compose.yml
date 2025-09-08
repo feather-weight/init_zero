@@ -1,11 +1,12 @@
+version: "3.8"
 
 services:
   mongo:
-    image: ${MDB_IMAGE}
+    image: mongo:6.0
     container_name: ${MDB_CONTAINER_NAME}
     restart: unless-stopped
     ports:
-      - "${MDB_PORT}:${MDB_PORT}"
+      - "27017:27017"
     volumes:
       - ./.data/mongo:/data/db
 
@@ -19,7 +20,7 @@ services:
       - PROJECT_NAME=${PROJECT_NAME}
       - API_BASE={API_BASE}
       - MONGO_URI=${MONGO_URI}
-      - MONGO_DB_NAME=${MONGO_DB}
+      - MDB_NAME=${MONGO_DB}
       - JWT_SECRET=${JWT_SECRET}
     ports:
       - "${BE_PORT}:${BE_PORT}"
@@ -35,7 +36,7 @@ services:
     restart: unless-stopped
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
-      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+      - NEXT_PUBLIC_BE_URL=${NEXT_PUBLIC_BE_URL}
       - NEXT_PUBLIC_PARALLAX=true
       - PORT=${FE_PORT}
     depends_on:
