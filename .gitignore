@@ -16,6 +16,7 @@ venv/
 # Docker & data
 .data/
 *.log
+*/docker-compose.yml
 
 # Env
 .env
