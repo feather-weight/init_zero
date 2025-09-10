@@ -44,3 +44,15 @@ body {
 .parallax > * { position: relative; z-index: 1; }
 
 .card { @include glass(); padding: 1.25rem; }
+
+/* Scroll parallax utilities for foreground content */
+.p-slow { transform: translateY(calc(var(--scroll, 0px) * 0.05)); will-change: transform; }
+.p-med  { transform: translateY(calc(var(--scroll, 0px) * 0.12)); will-change: transform; }
+.p-fast { transform: translateY(calc(var(--scroll, 0px) * 0.20)); will-change: transform; }
+
+/* Gradient text utility used on landing */
+.gradient {
+  background: -webkit-linear-gradient(white, #38495a);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

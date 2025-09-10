@@ -5,7 +5,7 @@
 # This script fixes the dual parallax backgrounds and light/dark theme toggle
 # for the wallet‑recoverer frontend. It assumes the project uses the
 # pages router (frontend/pages) and that your parallax images are stored
-# in `frontend/public/parallax-dark.png` and `frontend/public/parallax-light.jpg`.
+# in `frontend/public/parallax-dark.jpg` and `frontend/public/parallax-light.jpg`.
 #
 # The script performs the following operations:
 #   1. Verifies that the images exist in the public folder.
@@ -24,7 +24,7 @@ set -Eeuo pipefail
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$ROOT"
 
-IMG_DARK="frontend/public/parallax-dark.png"
+IMG_DARK="frontend/public/parallax-dark.jpg"
 IMG_LIGHT="frontend/public/parallax-light.jpg"
 
 # Check that images exist
@@ -90,14 +90,14 @@ cat > frontend/styles/globals.scss <<'SCSS'
 
 /* Dark theme variables: override image and overlay. */
 html[data-theme='dark'] {
-  --hero-image: url('/parallax-dark.png');
+  --hero-image: url('/parallax-dark.jpg');
   --overlay: rgba(0, 0, 0, 0.35);
 }
 
 /* Fallback for system dark mode when no explicit theme is stored. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --hero-image: url('/parallax-dark.png');
+    --hero-image: url('/parallax-dark.jpg');
     --overlay: rgba(0, 0, 0, 0.35);
   }
 }

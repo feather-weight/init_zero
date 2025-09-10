@@ -1,5 +1,4 @@
 import Head from 'next/head';
-import CodepenBackground from '../components/CodepenBackground';
 
 type Props = { project: string; parallax: boolean; backendStatus: string };
 
@@ -23,8 +22,8 @@ export default function Home({ project, parallax, backendStatus }: Props) {
       <Head><title>{project}</title></Head>
       {parallax && (
         <section className="parallax parallax--hero" aria-label="Decorative animated background">
-          <CodepenBackground user="sarazond" slug="LYGbwj" title="Landing Background" />
-          <h1 style={{margin:0}}>{project}</h1>
+          <div className="p-slow"><span className="gradient">PURE CSS</span></div>
+          <div className="p-med"><span className="gradient">PARALLAX PIXEL STARS</span></div>
         </section>
       )}
       <main className="container">

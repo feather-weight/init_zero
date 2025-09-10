@@ -1,0 +1,75 @@
+@function multiple-box-shadow($n) {
+  $value: "#{random(2000)}px #{random(2000)}px #FFF";
+  @for $i from 2 through $n {
+    $value: "#{$value}, #{random(2000)}px #{random(2000)}px #FFF";
+  }
+  @return unquote($value);
+}
+
+$shadows-small:  multiple-box-shadow(700);
+$shadows-medium: multiple-box-shadow(200);
+$shadows-big:    multiple-box-shadow(100);
+
+.starfield {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background-image: var(--bg-url, url('/parallax-dark.jpg'));
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 0;
+}
+
+.stars, .stars2, .stars3 {
+  position: absolute;
+  left: 0; right: 0;
+  top: 0; bottom: 0;
+}
+
+.stars {
+  width: 1px; height: 1px; background: transparent;
+  box-shadow: $shadows-small;
+  transform: translateY(calc(var(--scroll, 0px) * -0.20));
+}
+.stars::after {
+  content: ""; position: absolute; top: 2000px;
+  width: 1px; height: 1px; background: transparent;
+  box-shadow: $shadows-small;
+}
+
+.stars2 {
+  width: 2px; height: 2px; background: transparent;
+  box-shadow: $shadows-medium;
+  transform: translateY(calc(var(--scroll, 0px) * -0.35));
+}
+.stars2::after {
+  content: ""; position: absolute; top: 2000px;
+  width: 2px; height: 2px; background: transparent;
+  box-shadow: $shadows-medium;
+}
+
+.stars3 {
+  width: 3px; height: 3px; background: transparent;
+  box-shadow: $shadows-big;
+  transform: translateY(calc(var(--scroll, 0px) * -0.55));
+}
+.stars3::after {
+  content: ""; position: absolute; top: 2000px;
+  width: 3px; height: 3px; background: transparent;
+  box-shadow: $shadows-big;
+}
+
+.starTitle {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: #FFF; text-align: center; font-family: 'Lato', sans-serif;
+  letter-spacing: 10px;
+}
+.starTitle h1 { margin: 0; font-weight: 300; font-size: 50px; }
+.starTitle span.gradient {
+  background: -webkit-linear-gradient(white, #38495a);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* no animation; scroll-driven parallax via --scroll */

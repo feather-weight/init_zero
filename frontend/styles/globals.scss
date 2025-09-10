@@ -5,7 +5,7 @@
   --bg: #ffffff;
 }
 [data-theme='dark'] {
-  --bg-url: url('/parallax-dark.png');
+  --bg-url: url('/parallax-dark.jpg');
   --overlay: rgba(0,0,0,.30);
   --text: #f7f7f7;
   --bg: #0b0b0b;
@@ -15,14 +15,9 @@ body {
   margin: 0;
   color: var(--text);
   background: var(--bg);
-  background-image: linear-gradient(var(--overlay), var(--overlay)), var(--bg-url);
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
 }
 @supports (-webkit-overflow-scrolling: touch) {
-  body { background-attachment: scroll; }
+  body { }
 }
 .header {
   position: sticky; top: 0;
