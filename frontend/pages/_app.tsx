@@ -5,8 +5,10 @@ import '../styles/globals.scss';
 import ThemeToggle from '../components/ThemeToggle';
 import Starfield from '../components/Starfield';
 import useScrollParallax from '../hooks/useScrollParallax';
+import useStarConfig from '../hooks/useStarConfig';
 export default function App({ Component, pageProps }: AppProps) {
   useScrollParallax();
+  useStarConfig();
   return (
     <>
       <Starfield />

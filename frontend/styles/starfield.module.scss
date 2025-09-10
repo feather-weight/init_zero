@@ -28,9 +28,9 @@ $shadows-big:    multiple-box-shadow(100);
 }
 
 /* Scroll parallax on outer wrappers */
-.stars  { transform: translateY(calc(var(--scroll, 0px) * -0.20)); }
-.stars2 { transform: translateY(calc(var(--scroll, 0px) * -0.35)); }
-.stars3 { transform: translateY(calc(var(--scroll, 0px) * -0.55)); }
+.stars  { transform: translateY(calc(var(--scroll, 0px) * var(--star-parallax-s, -0.20))); }
+.stars2 { transform: translateY(calc(var(--scroll, 0px) * var(--star-parallax-m, -0.35))); }
+.stars3 { transform: translateY(calc(var(--scroll, 0px) * var(--star-parallax-l, -0.55))); }
 
 /* Continuous auto animation on inner layers */
 .s1, .s2, .s3 { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
@@ -38,7 +38,7 @@ $shadows-big:    multiple-box-shadow(100);
 .s1 {
   width: 1px; height: 1px; background: transparent;
   box-shadow: $shadows-small;
-  animation: animStar 50s linear infinite;
+  animation: animStar var(--star-speed-s, 50s) linear infinite;
 }
 .s1::after {
   content: ""; position: absolute; top: 2000px;
@@ -49,7 +49,7 @@ $shadows-big:    multiple-box-shadow(100);
 .s2 {
   width: 2px; height: 2px; background: transparent;
   box-shadow: $shadows-medium;
-  animation: animStar 100s linear infinite;
+  animation: animStar var(--star-speed-m, 100s) linear infinite;
 }
 .s2::after {
   content: ""; position: absolute; top: 2000px;
@@ -60,7 +60,7 @@ $shadows-big:    multiple-box-shadow(100);
 .s3 {
   width: 3px; height: 3px; background: transparent;
   box-shadow: $shadows-big;
-  animation: animStar 150s linear infinite;
+  animation: animStar var(--star-speed-l, 150s) linear infinite;
 }
 .s3::after {
   content: ""; position: absolute; top: 2000px;
