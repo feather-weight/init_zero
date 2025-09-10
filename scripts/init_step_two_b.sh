@@ -1,80 +1,139 @@
 #!/usr/bin/env bash
-#
-# Step 2(b) static fix script
-#
-# This script rewrites docker‑compose.yml with a clean static
-# configuration for the mongo, backend and frontend services using
-# fixed host ports. It also builds and starts the frontend service
-# to confirm the new configuration works. Use this when the compose
-# file has been corrupted by stray `networks.frontend` blocks and
-# environment variables for ports are causing issues.
+# zsh guard
+if [ -n "${ZSH_VERSION-}" ]; then exec /usr/bin/env bash "$0" "$@"; fi
 
 set -Eeuo pipefail
-IFS=$'\n\t'
+trap 'echo "❌ Error on line $LINENO: $BASH_COMMAND" >&2' ERR
 
-# Determine repository root (so script works from any location)
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-cd "$ROOT"
+# -- hard-disable anything interactive/editorial --------------------------------
+export VISUAL=
+export EDITOR=true
+export GIT_EDITOR=true
+export HUSKY=0
+export CI=${CI:-1}
+export PAGER=cat
+export LESS=FRX
+export NPM_CONFIG_FUND=false
+export npm_config_audit=false
 
-echo "[2B-static-fix] Rewriting docker-compose.yml with static ports"
+die(){ echo "❌ $*" >&2; exit 1; }
+note(){ echo "➜ $*"; }
+ok(){ echo "✅ $*"; }
 
-cat > docker-compose.yml <<'YML'
-version: "3.8"
+DO_BUILD=0
+TRACE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --build) DO_BUILD=1 ;;
+    --no-build) DO_BUILD=0 ;;
+    --trace) TRACE=1 ;;
+    *) die "Unknown flag: $1" ;;
+  esac; shift
+done
+[ "$TRACE" -eq 1 ] && set -x
 
-services:
-  mongo:
-    image: mongo:6.0
-    container_name: recoverer-mongo
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - ./.data/mongo:/data/db
+# ---- 1) strict .env loader ----------------------------------------------------
+ENV_FILE=".env"
+[ -f "$ENV_FILE" ] || die "Missing $ENV_FILE"
 
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: recoverer-backend
-    restart: unless-stopped
-    environment:
-      - PROJECT_NAME=wallet-recoverer
-      - API_BASE=/api
-      - MONGO_URI=mongodb://recoverer-mongo:27017/wallet_recoverer_db
-      - MDB_NAME=wallet_recoverer_db
-      - JWT_SECRET=changeme_fill_in_step_later
-    ports:
-      - "8000:8000"
-    depends_on:
-      - mongo
-
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    container_name: recoverer-frontend
-    restart: unless-stopped
-    environment:
-      - PROJECT_NAME=wallet-recoverer
-      - NEXT_PUBLIC_BE_URL=http://localhost:8000
-      - NEXT_PUBLIC_PARALLAX=1
-    depends_on:
-      - backend
-    ports:
-      - "3000:3000"
-
-networks:
-  default:
-    name: recoverynet
-YML
-
-# Try to build and start the frontend to validate the configuration. If
-# docker compose is not available, fall back to docker‑compose.
-echo "[2B-static-fix] Building and starting frontend with static ports"
-if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-  docker compose up -d --build frontend || true
-else
-  docker-compose up -d --build frontend || true
+if grep -n '\$' "$ENV_FILE" >/dev/null; then
+  echo "❌ $ENV_FILE must be literal-only (no \$ or \${…}). Offending lines:" >&2
+  grep -n '\$' "$ENV_FILE" >&2 || true
+  exit 1
 fi
 
-echo "[2B-static-fix] Done. Please check 'docker compose logs frontend' to verify the frontend is running."
+set -a
+while IFS= read -r line; do
+  [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+  if [[ ! "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=(.*)$ ]]; then
+    die "Invalid line in $ENV_FILE: $line"
+  fi
+  key="${BASH_REMATCH[1]}"
+  val="${BASH_REMATCH[2]}"
+  val="${val#"${val%%[![:space:]]*}"}"   # ltrim
+  export "$key=$val"
+done < "$ENV_FILE"
+set +a
+ok "Loaded environment from $ENV_FILE (literal-only)"
+
+# ---- 2) docker compose validation (best effort) -------------------------------
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  note "Validating docker compose config…"
+  docker compose config >/dev/null
+  ok "docker compose config OK"
+else
+  note "docker compose not found; skipping compose validation."
+fi
+
+# ---- 3) CSS Modules purity fix ------------------------------------------------
+STYLES_DIR="styles"
+GLOBAL_FILE="$STYLES_DIR/parallax-globals.scss"
+mkdir -p "$STYLES_DIR"
+[ -f "$GLOBAL_FILE" ] || printf "/* Global CSS extracted from modules */\n" > "$GLOBAL_FILE"
+
+# gather modules project-wide
+mapfile -t MODULES < <(find . -type f \( -name "*.module.scss" -o -name "*.module.sass" \))
+
+extract_root_blocks() {
+  local f="$1"
+  grep -qE '(^|[[:space:]])(:global\(\s*)?:root[[:space:]]*\{' "$f" || return 0
+  cp -n "$f" "$f.bak" || true
+  perl -0777 -ne 'while (m/(:global\(\s*)?:root\s*\{([^{}]|\{[^}]*\})*?\}/gms) { print "$&\n"; }' "$f" >> "$GLOBAL_FILE" || true
+  perl -0777 -pe 's/(:global\(\s*)?:root\s*\{([^{}]|\{[^}]*\})*?\}//gms' -i "$f"
+}
+
+wrap_html_globals() {
+  local f="$1" tmp
+  cp -n "$f" "$f.bak" || true
+  tmp="$(mktemp)"
+  awk '
+    {
+      gsub(/(^|[ \t{;])html(\[[^]]*\])([ \t]+(\.))/ , "\\1:global(html\\2)\\3");
+      print;
+    }
+  ' "$f" > "$tmp" && mv "$tmp" "$f"
+}
+
+if ((${#MODULES[@]})); then
+  note "Fixing CSS Modules purity across ${#MODULES[@]} files…"
+  for f in "${MODULES[@]}"; do
+    extract_root_blocks "$f"
+    wrap_html_globals "$f"
+  done
+  awk '!seen[$0]++' "$GLOBAL_FILE" > "$GLOBAL_FILE.tmp" && mv "$GLOBAL_FILE.tmp" "$GLOBAL_FILE"
+  ok "CSS Modules cleaned"
+else
+  note "No *.module.scss files found; skipping CSS Modules fixes."
+fi
+
+# ensure global import present
+IMPORT_LINE='import "@/styles/parallax-globals.scss";'
+TARGET=""
+if [ -f "app/layout.tsx" ]; then
+  TARGET="app/layout.tsx"
+elif [ -f "pages/_app.tsx" ]; then
+  TARGET="pages/_app.tsx"
+fi
+if [ -n "$TARGET" ] && ! grep -Fq "$IMPORT_LINE" "$TARGET"; then
+  note "Adding global import to $TARGET"
+  tmp="$(mktemp)"; { echo "$IMPORT_LINE"; cat "$TARGET"; } > "$tmp"; mv "$tmp" "$TARGET"
+  ok "Global import added"
+else
+  note "Global import already present or router entry not found; skipping."
+fi
+
+# ---- 4) Build (optional; default OFF so we can isolate issues) ----------------
+if [ "$DO_BUILD" -eq 1 ]; then
+  note "Building Next.js (non-interactive)…"
+  if jq -e '.scripts.build' package.json >/dev/null 2>&1; then
+    npm run -s build
+  else
+    npx --yes next build
+  fi
+  ok "Build completed"
+else
+  note "Skipping build (use --build to enable)."
+fi
+
+ok "init_step_two_b.sh finished."
+

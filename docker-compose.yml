@@ -1,14 +1,13 @@
-version: "3.8"
-
 services:
   mongo:
-    image: mongo:6.0
+    image: ${MDB_IMAGE}
     container_name: ${MDB_CONTAINER_NAME}
     restart: unless-stopped
+    command: mongod --port ${MDB_PORT}
     ports:
-      - "27017:27017"
+      - "${MDB_PORT}:${MDB_PORT}"
     volumes:
-      - ./.data/mongo:/data/db
+      - "${VOLUME}:/data/db"
 
   backend:
     build:
@@ -20,29 +19,36 @@ services:
       - PROJECT_NAME=${PROJECT_NAME}
       - API_BASE=${API_BASE}
       - MONGO_URI=${MONGO_URI}
-      - MDB_NAME=${MONGO_DB}
+      - MONGO_DB_NAME=${MONGO_DB}
       - JWT_SECRET=${JWT_SECRET}
-    ports:
-      - "${BE_PORT}:${BE_PORT}"
+      - PORT=${BE_INTERNAL_PORT}
+    working_dir: ${WORKING_DIR}
+    command: uvicorn app.main:app --host 0.0.0.0 --port ${BE_INTERNAL_PORT}
     depends_on:
       - mongo
+    ports:
+      - "${BE_PORT}:${BE_INTERNAL_PORT}"
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile
-      working_dir: ${WORKING_DIR}
     container_name: ${FE_CONTAINER_NAME}
     restart: unless-stopped
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
-      - NEXT_PUBLIC_BE_URL=${NEXT_PUBLIC_BE_URL}
-      - NEXT_PUBLIC_PARALLAX=true
-      - PORT=${FE_PORT}
+      - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME}
+      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
+      - NEXT_PUBLIC_BE_URL=${BE_URL}
+      - NEXT_PUBLIC_BACKEND_URL=${BE_URL}
+      - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}
+      - PORT=${FE_INTERNAL_PORT}
+    working_dir: ${WORKING_DIR}
+    command: sh -c "npm run start -- -H 0.0.0.0 -p ${FE_INTERNAL_PORT}"
     depends_on:
       - backend
     ports:
-      - "${FE_PORT}:${FE_PORT}"
+      - "${FE_PORT}:${FE_INTERNAL_PORT}"
 
 networks:
   default:
