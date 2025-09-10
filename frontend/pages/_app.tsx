@@ -1,3 +1,4 @@
+import '../styles/global.scss';
 import '../styles/parallax-globals.scss';
 import type { AppProps } from 'next/app';
 import '../styles/globals.scss';
