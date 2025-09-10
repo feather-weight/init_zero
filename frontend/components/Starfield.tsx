@@ -15,9 +15,9 @@ export default function Starfield({ children }: Props) {
           rel="stylesheet"
         />
       </Head>
-      <div className={styles.stars} />
-      <div className={styles.stars2} />
-      <div className={styles.stars3} />
+      <div className={styles.stars}><div className={styles.s1} /></div>
+      <div className={styles.stars2}><div className={styles.s2} /></div>
+      <div className={styles.stars3}><div className={styles.s3} /></div>
       <div className={styles.starTitle}>
         {children}
       </div>

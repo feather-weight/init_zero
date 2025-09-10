@@ -107,7 +107,7 @@ DOCKER
 
 # Optionally ensure parallax images exist (create tiny placeholder JPGs if missing)
 mkdir -p frontend/public
-for img in parallax-dark.jpg parallax-light.jpg; do
+for img in parallax-dark.png parallax-light.jpg; do
   [ -f "frontend/public/$img" ] || printf '\xFF\xD8\xFF\xD9' > "frontend/public/$img"
 done
 
@@ -121,7 +121,7 @@ cat > frontend/styles/globals.scss <<'SCSS'
   --bg: #ffffff;
 }
 [data-theme='dark'] {
-  --bg-url: url('/parallax-dark.jpg');
+  --bg-url: url('/parallax-dark.png');
   --overlay: rgba(0,0,0,.30);
   --text: #f7f7f7;
   --bg: #0b0b0b;
