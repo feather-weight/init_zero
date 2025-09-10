@@ -1,4 +1,3 @@
-cat > scripts/test_step_two_c.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -23,7 +22,3 @@ echo "Step 2c checks passed."
 # cleanup
 kill "$(cat .next.pid)" >/dev/null 2>&1 || true
 rm -f .next.pid
-EOF
-
-chmod +x scripts/test_step_two_c.sh
-

@@ -1,70 +1,141 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
-IFS=$'\n\t'
+set -euo pipefail
 
-dc() { if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then docker compose "$@"; else docker-compose "$@"; fi; }
-root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-cd "$root"
-
-# Ensure NEXT_PUBLIC_BE_URL exists
-if ! grep -q '^NEXT_PUBLIC_BE_URL=' .env; then
-  echo "NEXT_PUBLIC_BE_URL=http://localhost:8000" >> .env
+# Pre-reqs
+if ! grep -q '"sass"' package.json; then
+  echo "Adding sass…"
+  npm pkg set devDependencies.sass="^1.77.0" >/dev/null
+  npm ci
 fi
 
-# Patch index.tsx to fetch backend health on the server (SSR)
-cat > frontend/pages/index.tsx <<'IDX'
-import Head from 'next/head';
+# SCSS structure
+mkdir -p styles
 
-type Props = { project: string; backendStatus: string };
+# variables
+cat > styles/_variables.scss <<'VARS'
+$brand: #0ea5e9;
+$bg-dark: #0b1220;
+$text: #e5eefb;
+$radius: 16px;
+VARS
 
-export async function getServerSideProps() {
-  const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
-  const base = process.env.NEXT_PUBLIC_BE_URL ?? 'http://localhost:8000';
-  let backendStatus = 'unknown';
-  try {
-    const res = await fetch(`${base}/health`, { cache: 'no-store' });
-    if (res.ok) {
-      const j = await res.json();
-      backendStatus = j?.status ?? 'unknown';
-    } else {
-      backendStatus = `http ${res.status}`;
-    }
-  } catch (e) {
-    backendStatus = 'unreachable';
-  }
-  return { props: { project, backendStatus } };
+# mixins
+cat > styles/_mixins.scss <<'MIX'
+@use 'variables' as *;
+
+@mixin glass() {
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: $radius;
+}
+MIX
+
+# global (import order: variables → mixins → rest)
+cat > styles/global.scss <<'GLOBAL'
+@use 'variables' as *;
+@use 'mixins' as *;
+
+:root {
+  --brand: #0ea5e9;
+  --bg-dark: #0b1220;
+  --text: #e5eefb;
 }
 
-export default function Home({ project, backendStatus }: Props) {
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial;
+  color: var(--text);
+  background: var(--bg-dark);
+}
+
+.container {
+  max-width: 1100px; margin: 0 auto; padding: 2rem;
+}
+
+.btn {
+  display: inline-block; padding: .75rem 1rem; border-radius: $radius;
+  color: white; text-decoration: none; background: $brand;
+}
+
+.parallax {
+  min-height: 70vh;
+  background-image: linear-gradient(180deg, rgba(14,165,233,.18), rgba(11,18,32,1)), url('/parallax.jpg');
+  background-attachment: fixed; /* desktop parallax */
+  background-size: cover;
+  background-position: center;
+  display: grid; place-items: center;
+}
+
+.card { @include glass(); padding: 1.25rem; }
+GLOBAL
+
+# Ensure root layout imports global.scss (Next.js App Router)
+LAYOUT_FILE="app/layout.tsx"
+if [ ! -f "$LAYOUT_FILE" ]; then
+  mkdir -p app
+  cat > "$LAYOUT_FILE" <<'LAY'
+import './styles/global.scss';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Wallet Recovery',
+  description: 'Ethical, watch-only wallet recovery toolkit',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      <Head><title>{project}</title></Head>
-      <main className="container">
-        <h1>{project}</h1>
-        <p className="hint">Watch-only wallet recovery — educational and defensive.</p>
-        <p><strong>Backend:</strong> <span className="badge">{backendStatus}</span></p>
-        <span className="badge">Step 2(c): Frontend ↔ Backend wired via env URL</span>
-      </main>
-    </>
+    <html lang="en">
+      <body>{children}</body>
+    </html>
   );
 }
-IDX
+LAY
+else
+  # inject import if missing
+  grep -q "import './styles/global.scss'" "$LAYOUT_FILE" || \
+    sed -i.bak "1i import './styles/global.scss';" "$LAYOUT_FILE"
+fi
 
-# Rebuild frontend (no cache to pick up env at build/start)
-dc build --no-cache frontend
-dc up -d frontend
+# Home page with parallax hero + mobile fallback <style>
+PAGE_FILE="app/page.tsx"
+mkdir -p app
+cat > "$PAGE_FILE" <<'PAGE'
+export default function Home() {
+  return (
+    <main>
+      <section className="parallax">
+        <div className="card container">
+          <h1>Wallet Recovery</h1>
+          <p>Watch-only, ethical scanning. No sweeping. Recovery only.</p>
+          <a className="btn" href="#login">Login</a>
+        </div>
+      </section>
+      <style jsx global>{`
+        /* Mobile fallback: disable fixed attachment */
+        @media (max-width: 768px) {
+          .parallax { background-attachment: scroll; }
+        }
+      `}</style>
+      <section className="container" style={{paddingBottom:'3rem'}}>
+        <h2>Purpose, Ethics & Safe Use</h2>
+        <p>Use this tool only to recover wallets you rightfully own or are explicitly authorized to help recover.</p>
+      </section>
+    </main>
+  );
+}
+PAGE
 
-# docs
-cat > docs/init_step_two_c_FE_BE_wiring.md <<'MD'
-# Step 2(c): Frontend ↔ Backend Wiring (SSR)
+# Provide a placeholder parallax image if none exists
+if [ ! -f "public/parallax.jpg" ]; then
+  mkdir -p public
+  # tiny gradient PNG as placeholder masquerading as .jpg
+  printf '\211PNG\r\n\032\n' > public/parallax.jpg 2>/dev/null || true
+fi
 
-- Homepage calls `${NEXT_PUBLIC_BE_URL}/health` on the server.
-- Displays backend status badge so you can confirm cross-service connectivity at a glance.
-- All ports/URLs pulled from `.env`.
+echo "Building to validate SCSS…"
+npm run build >/dev/null
 
-MD
-source scripts/_pdf.sh
-pdfify docs/init_step_two_c_FE_BE_wiring.md docs/init_step_two_c_FE_BE_wiring.pdf
-
-echo "[2C] Done."
-
+echo "init_step_two_c complete."
