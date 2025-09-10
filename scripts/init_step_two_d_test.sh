@@ -21,7 +21,7 @@ if [[ -n "$bport" ]]; then
 fi
 
 # Optional: verify assets if present
-for img in parallax-dark.jpg parallax-light.jpg; do
+for img in parallax-dark.png parallax-light.jpg; do
   if [[ -f "frontend/public/$img" ]]; then
     echo "OK: found frontend/public/$img"
   else
