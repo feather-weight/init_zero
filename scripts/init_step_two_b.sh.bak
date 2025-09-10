@@ -1,286 +1,143 @@
-# Create revised init_step_two_b.sh (with SCSS + Parallax baked in) and a small package for download
-import os, zipfile, textwrap, json, pathlib
-
-root = "/mnt/data/revised_step2b"
-scripts_dir = os.path.join(root, "scripts")
-docs_dir = os.path.join(root, "docs")
-os.makedirs(scripts_dir, exist_ok=True)
-os.makedirs(docs_dir, exist_ok=True)
-
-script = r"""#!/usr/bin/env bash
-# Step 2(b) — Frontend (Next.js) bootstrap with SCSS + Parallax baked in
-# Safe to re-run: idempotent where possible.
+#!/usr/bin/env bash
+# zsh guard
+if [ -n "${ZSH_VERSION-}" ]; then exec /usr/bin/env bash "$0" "$@"; fi
 set -Eeuo pipefail
-IFS=$'\n\t'
+trap 'echo "❌ Error on line $LINENO: $BASH_COMMAND" >&2' ERR
 
-dc() { if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then docker compose "$@"; else docker-compose "$@"; fi; }
-root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-cd "$root"
+# ---- ensure nothing opens an editor (git hooks / tools) ----
+export VISUAL=
+export EDITOR=true
+export GIT_EDITOR=true
+export HUSKY=0
+export CI=1
+export NPM_CONFIG_FUND=false
+export npm_config_audit=false
 
-echo "[2B] Ensure required env vars"
-touch .env
-grep -q '^PROJECT_NAME=' .env || echo 'PROJECT_NAME=wallet-recoverer' >> .env
-grep -q '^FE_PORT=' .env || echo 'FE_PORT=3000' >> .env
-grep -q '^FE_INTERNAL_PORT=' .env || echo 'FE_INTERNAL_PORT=3000' >> .env
-grep -q '^FE_SERVICE_NAME=' .env || echo 'FE_SERVICE_NAME=recoverer-frontend' >> .env
-grep -q '^NEXT_PUBLIC_PARALLAX=' .env || echo 'NEXT_PUBLIC_PARALLAX=1' >> .env
-# make sure backend URL exists (used in 2c, harmless here)
-grep -q '^NEXT_PUBLIC_BE_URL=' .env || echo 'NEXT_PUBLIC_BE_URL=http://localhost:8000' >> .env
+die(){ echo "❌ $*" >&2; exit 1; }
+note(){ echo "➜ $*"; }
+ok(){ echo "✅ $*"; }
 
-echo "[2B] Scaffolding frontend (Next.js + TypeScript + SCSS + Parallax)"
-mkdir -p frontend/pages/api frontend/pages frontend/public frontend/styles frontend/components
+# ---- 1) strict .env loader: allow override and fallback to parent .env ----
+ENV_FILE="${ENV_FILE:-.env}"
+if [ ! -f "$ENV_FILE" ] && [ -f "../.env" ]; then ENV_FILE="../.env"; fi
+[ -f "$ENV_FILE" ] || die "Missing .env (set ENV_FILE or place a .env file here or one directory up)"
 
-cat > frontend/package.json <<'PKG'
-{
-  "name": "wallet-recoverer-frontend",
-  "private": true,
-  "scripts": {
-    "dev": "next dev -p ${FE_INTERNAL_PORT:-3000}",
-    "build": "next build",
-    "start": "next start -p ${FE_INTERNAL_PORT:-3000}",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "next": "14.2.6",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "sass": "1.77.8"
-  },
-  "devDependencies": {
-    "typescript": "5.5.4",
-    "@types/react": "18.3.3",
-    "@types/node": "22.5.5",
-    "eslint": "9.9.1",
-    "eslint-config-next": "14.2.6"
-  }
-}
-PKG
+# Canonicalise to absolute path so a subsequent cd doesn't break it
+ENV_FILE="$(cd "$(dirname "$ENV_FILE")" && pwd)/$(basename "$ENV_FILE")"
 
-cat > frontend/tsconfig.json <<'TS'
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["dom", "dom.iterable", "es2022"],
-    "allowJs": false,
-    "skipLibCheck": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "noEmit": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
-}
-TS
-
-cat > frontend/next.config.js <<'NC'
-/** @type {import('next').NextConfig} */
-const nextConfig = { reactStrictMode: true };
-module.exports = nextConfig;
-NC
-
-# Global SCSS with base parallax utilities
-cat > frontend/styles/globals.scss <<'SCSS'
-:root { color-scheme: light dark; }
-body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-.container { max-width: 880px; margin: 2rem auto; padding: 1rem; }
-.badge { display:inline-block; padding:.2rem .5rem; border-radius:.5rem; border:1px solid currentColor; font-size:.8rem; opacity:.8; }
-.hint { opacity:.7; font-size:.9rem; }
-
-.parallax {
-  position: relative;
-  min-height: 40vh;
-  display: grid;
-  place-items: center;
-  color: white;
-  text-shadow: 0 1px 2px rgba(0,0,0,.4);
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed; /* simple, compatible parallax */
-}
-.parallax--hero {
-  background-image:
-    linear-gradient(rgba(0,0,0,.25), rgba(0,0,0,.25)),
-    url('/parallax-hero.jpg');
-}
-
-/* accessibility */
-@media (prefers-reduced-motion: reduce) {
-  .parallax { background-attachment: scroll; }
-}
-SCSS
-
-# Basic app wrapper imports SCSS
-cat > frontend/pages/_app.tsx <<'APP'
-import type { AppProps } from 'next/app';
-import '../styles/globals.scss';
-export default function App({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
-}
-APP
-
-# Minimal Parallax component
-cat > frontend/components/Parallax.tsx <<'PARA'
-import React from 'react';
-type Props = { className?: string; children?: React.ReactNode };
-export default function Parallax({ className = '', children }: Props) {
-  return (
-    <section className={`parallax ${className}`} role="img" aria-label="Decorative parallax background">
-      <div>{children}</div>
-    </section>
-  );
-}
-PARA
-
-# Landing page with optional parallax hero (env-gated)
-cat > frontend/pages/index.tsx <<'IDX'
-import Head from 'next/head';
-import Parallax from '../components/Parallax';
-
-type Props = { project: string; parallax: boolean };
-
-export async function getServerSideProps() {
-  const project = process.env.PROJECT_NAME ?? 'wallet-recoverer';
-  const parallax = (process.env.NEXT_PUBLIC_PARALLAX ?? '1') === '1';
-  return { props: { project, parallax } };
-}
-
-export default function Home({ project, parallax }: Props) {
-  return (
-    <>
-      <Head><title>{project}</title></Head>
-      {parallax && (
-        <Parallax className="parallax--hero">
-          <h1 style={{margin:0}}>{project}</h1>
-        </Parallax>
-      )}
-      <main className="container">
-        <p className="hint">Watch-only wallet recovery — educational and defensive.</p>
-        <span className="badge">Step 2(b): Frontend bootstrap + SCSS + Parallax</span>
-      </main>
-    </>
-  );
-}
-IDX
-
-# Frontend API health
-cat > frontend/pages/api/health.ts <<'API'
-import type { NextApiRequest, NextApiResponse } from 'next';
-export default function handler(_req: NextApiRequest, res: NextApiResponse) {
-  res.status(200).json({ status: 'ok', service: 'frontend' });
-}
-API
-
-# Dockerfile for frontend
-cat > frontend/Dockerfile <<'DOCKER'
-FROM node:22-alpine
-ENV NEXT_TELEMETRY_DISABLED=1
-WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --no-audit --progress=false
-COPY frontend ./
-ARG FE_INTERNAL_PORT=3000
-ENV FE_INTERNAL_PORT=${FE_INTERNAL_PORT}
-EXPOSE ${FE_INTERNAL_PORT}
-CMD ["npm","run","start"]
-DOCKER
-
-# Provide a tiny placeholder hero if none exists (won't fail if convert not available)
-if [ ! -f frontend/public/parallax-hero.jpg ]; then
-  # create a tiny 1x1 png and save as jpg via printf (valid minimal JPEG header)
-  # fallback: just touch the file if conversion isn't available
-  printf '\xFF\xD8\xFF\xD9' > frontend/public/parallax-hero.jpg || touch frontend/public/parallax-hero.jpg
+if grep -n '\$' "$ENV_FILE" >/dev/null; then
+  echo "❌ $ENV_FILE must be literal-only (no \$ or \${…}). Offending lines:" >&2
+  grep -n '\$' "$ENV_FILE" >&2 || true
+  exit 1
 fi
 
-# Extend docker-compose with frontend if not already present
-if ! grep -qE '^[[:space:]]*frontend:' docker-compose.yml 2>/dev/null; then
-  cat >> docker-compose.yml <<'YML'
+set -a
+while IFS= read -r line; do
+  [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+  if [[ ! "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=(.*)$ ]]; then
+    die "Invalid line in $ENV_FILE: $line"
+  fi
+  key="${BASH_REMATCH[1]}"
+  val="${BASH_REMATCH[2]}"
+  val="${val#"${val%%[![:space:]]*}"}"
+  export "$key=$val"
+done < "$ENV_FILE"
+set +a
+ok "Loaded environment from $ENV_FILE (literal-only)"
 
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-      args:
-        - FE_INTERNAL_PORT=${FE_INTERNAL_PORT}
-    container_name: ${FE_SERVICE_NAME}
-    restart: unless-stopped
-    environment:
-      - PROJECT_NAME=${PROJECT_NAME}
-      - NEXT_PUBLIC_BE_URL=${NEXT_PUBLIC_BE_URL}
-      - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}
-    depends_on:
-      - backend
-    ports:
-      - "${FE_PORT}:${FE_INTERNAL_PORT}"
-YML
+# ---- 2) docker compose validation (if available) ----
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  note "Validating docker compose config…"
+  docker compose config >/dev/null
+  ok "docker compose config OK"
+else
+  note "docker compose not found; skipping compose validation."
 fi
 
-echo "[2B] Build & start frontend"
-dc build frontend
-dc up -d frontend
+# ---- 3) locate Next.js app dir (supports monorepos) ----
+detect_next_dir() {
+  # Common monorepo locations first
+  for d in ./frontend ./apps/frontend ./apps/web ./packages/frontend ./packages/web .; do
+    if [ -f "$d/package.json" ] &&
+       grep -q '"next"' "$d/package.json" &&
+       { [ -d "$d/app" ] || [ -d "$d/pages" ]; }; then
+      echo "$d"; return 0
+    fi
+  done
+  # Fallback: scan up to 3 directories deep
+  while IFS= read -r -d '' pjson; do
+    dir="$(dirname "$pjson")"
+    if grep -q '"next"' "$pjson" &&
+       { [ -d "$dir/app" ] || [ -d "$dir/pages" ]; }; then
+      echo "$dir"; return 0
+    fi
+  done < <(find . -maxdepth 3 -type f -name package.json -print0)
+  return 1
+}
+NEXT_DIR="$(detect_next_dir)" || die "No Next.js app found (needs package.json with \"next\" AND app/ or pages/)"
+note "Detected Next app: $NEXT_DIR"
 
-# Docs
-mkdir -p docs
-cat > docs/init_step_two_b_FE_bootstrap.md <<'MD'
-# Step 2(b): Frontend (Next.js) Bootstrap with SCSS & Parallax
+# ---- 4) CSS Modules purity fix (scoped to NEXT_DIR) ----
+STYLES_DIR="$NEXT_DIR/styles"
+GLOBAL_FILE="$STYLES_DIR/parallax-globals.scss"
+mkdir -p "$STYLES_DIR"
+[ -f "$GLOBAL_FILE" ] || printf "/* Global CSS extracted from modules */\n" > "$GLOBAL_FILE"
 
-- Minimal Next.js app (TypeScript) with `/api/health`.
-- SCSS wired via `sass` dependency and `globals.scss`.
-- Reusable `<Parallax>` component and optional hero section gated by `NEXT_PUBLIC_PARALLAX`.
-- Dockerized; uses env ports: `${FE_PORT}:${FE_INTERNAL_PORT}`.
+# gather modules only under NEXT_DIR
+MODULES=()
+while IFS= read -r -d '' f; do
+  MODULES+=("$f")
+done < <(find "$NEXT_DIR" -type f \( -name "*.module.scss" -o -name "*.module.sass" \) -print0)
 
-MD
+extract_root_blocks() {
+  local f="$1"
+  grep -qE '(^|[[:space:]])(:global\(\s*)?:root[[:space:]]*\{' "$f" || return 0
+  cp -n "$f" "$f.bak" || true
+  perl -0777 -ne 'while (m/(:global\(\s*)?:root\s*\{([^{}]|\{[^}]*\})*?\}/gms) { print "$&\n"; }' "$f" >> "$GLOBAL_FILE" || true
+  perl -0777 -pe 's/(:global\(\s*)?:root\s*\{([^{}]|\{[^}]*\})*?\}//gms' -i "$f"
+}
 
-# Optional: convert to PDF (best-effort)
-if [ -f scripts/_pdf.sh ]; then
-  source scripts/_pdf.sh
-  pdfify docs/init_step_two_b_FE_bootstrap.md docs/init_step_two_b_FE_bootstrap.pdf || true
+wrap_html_globals() {
+  local f="$1" tmp
+  cp -n "$f" "$f.bak" || true
+  tmp="$(mktemp)"
+  awk '{ gsub(/(^|[ \t{;])html(\[[^]]*\])([ \t]+(\.))/ , "\\1:global(html\\2)\\3"); print; }' "$f" > "$tmp" && mv "$tmp" "$f"
+}
+
+if [ "${#MODULES[@]}" -gt 0 ]; then
+  note "Fixing CSS Modules purity across ${#MODULES[@]} files in $NEXT_DIR…"
+  for f in "${MODULES[@]}"; do
+    extract_root_blocks "$f"
+    wrap_html_globals "$f"
+  done
+  awk '!seen[$0]++' "$GLOBAL_FILE" > "$GLOBAL_FILE.tmp" && mv "$GLOBAL_FILE.tmp" "$GLOBAL_FILE"
+  ok "CSS Modules cleaned"
+else
+  note "No *.module.scss files found under $NEXT_DIR; skipping CSS fixes."
 fi
 
-echo "[2B] Done."
-"""
+# ---- 5) ensure global import exists in NEXT_DIR ----
+IMPORT_LINE='import "@/styles/parallax-globals.scss";'
+TARGET=""
+if [ -f "$NEXT_DIR/app/layout.tsx" ]; then
+  TARGET="$NEXT_DIR/app/layout.tsx"
+elif [ -f "$NEXT_DIR/pages/_app.tsx" ]; then
+  TARGET="$NEXT_DIR/pages/_app.tsx"
+fi
 
-test_script = r"""#!/usr/bin/env bash
-set -Eeuo pipefail
-echo "[2B TEST] Checking FE_PORT"
-port="$(grep -E '^FE_PORT=' .env | cut -d= -f2 || true)"
-[[ -n "$port" ]] || { echo "Missing FE_PORT in .env"; exit 1; }
+if [ -n "$TARGET" ] && ! grep -Fq "$IMPORT_LINE" "$TARGET"; then
+  note "Adding global import to $TARGET"
+  tmp="$(mktemp)"; { echo "$IMPORT_LINE"; cat "$TARGET"; } > "$tmp"; mv "$tmp" "$TARGET"
+  ok "Global import added"
+else
+  note "Global import already present or router entry not found; skipping."
+fi
 
-echo "[2B TEST] /api/health"
-curl -fsS "http://localhost:${port}/api/health" | grep -q '"status":"ok"' && echo "OK: frontend health"
-
-echo "[2B TEST] GET /"
-curl -fsS "http://localhost:${port}/" >/dev/null && echo "OK: homepage loads"
-
-echo "PASS: 2(b)"
-"""
-
-doc = """# Step 2(b): Frontend (Next.js) Bootstrap with SCSS & Parallax
-
-This is the revised Step 2(b) that **bakes in SCSS and a Parallax hero** from the start.
-
-- Adds `sass` and `globals.scss`
-- Adds a `<Parallax>` component and optional hero (`NEXT_PUBLIC_PARALLAX=1`)
-- Creates a small placeholder image at `public/parallax-hero.jpg` if none exists
-- Dockerfile + Compose extension for the frontend
-"""
-
-open(os.path.join(scripts_dir, "init_step_two_b.sh"), "w").write(script)
-open(os.path.join(scripts_dir, "init_step_two_b_test.sh"), "w").write(test_script)
-open(os.path.join(docs_dir, "init_step_two_b_FE_bootstrap.md"), "w").write(doc)
-
-# Make a zip package
-zip_path = "/mnt/data/revised_init_step_two_b_package.zip"
-with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-    for p in [os.path.join(scripts_dir, "init_step_two_b.sh"),
-              os.path.join(scripts_dir, "init_step_two_b_test.sh"),
-              os.path.join(docs_dir, "init_step_two_b_FE_bootstrap.md")]:
-        z.write(p, arcname=os.path.relpath(p, root))
-
-zip_path
-
+# ---- 6) build (non-interactive) in NEXT_DIR ----
+note "Building Next.js in $NEXT_DIR…"
+if jq -e '.scripts.build' "$NEXT_DIR/package.json" >/dev/null 2>&1; then
+  ( cd "$NEXT_DIR" && npm run -s build )
+else
+  ( cd "$NEXT_DIR" && npx --yes next build )
+fi
+ok "Build completed"
