@@ -71,8 +71,11 @@ GLOBAL_FILE="$STYLES_DIR/parallax-globals.scss"
 mkdir -p "$STYLES_DIR"
 [ -f "$GLOBAL_FILE" ] || printf "/* Global CSS extracted from modules */\n" > "$GLOBAL_FILE"
 
-# gather modules project-wide
-mapfile -t MODULES < <(find . -type f \( -name "*.module.scss" -o -name "*.module.sass" \))
+# gather modules project-wide (Bash 3.2 compatible)
+MODULES=()
+while IFS= read -r -d '' f; do
+  MODULES+=("$f")
+done < <(find . -type f \( -name "*.module.scss" -o -name "*.module.sass" \) -print0)
 
 extract_root_blocks() {
   local f="$1"
