@@ -26,12 +26,21 @@ body {
 }
 
 .parallax {
+  position: relative;
   min-height: 70vh;
-  background-image: linear-gradient(180deg, rgba(14,165,233,.18), rgba(11,18,32,1)), url('/parallax.jpg');
+  /* Remove overlay by default; keep only image if used elsewhere */
+  background-image: url('/parallax.jpg');
   background-attachment: fixed; /* desktop parallax */
   background-size: cover;
   background-position: center;
   display: grid; place-items: center;
 }
+
+/* Landing hero: use embedded background (e.g., CodePen), no image/overlay */
+.parallax--hero { background: none !important; }
+
+/* Utility for absolutely-positioned background container */
+.codepen-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.parallax > * { position: relative; z-index: 1; }
 
 .card { @include glass(); padding: 1.25rem; }
