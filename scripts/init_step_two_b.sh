@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 # zsh guard
 if [ -n "${ZSH_VERSION-}" ]; then exec /usr/bin/env bash "$0" "$@"; fi
-
 set -Eeuo pipefail
 trap 'echo "❌ Error on line $LINENO: $BASH_COMMAND" >&2' ERR
 
-# -- hard-disable anything interactive/editorial --------------------------------
+# ---- ensure nothing opens an editor (git hooks / tools) ----
 export VISUAL=
 export EDITOR=true
 export GIT_EDITOR=true
 export HUSKY=0
-export CI=${CI:-1}
-export PAGER=cat
-export LESS=FRX
+export CI=1
 export NPM_CONFIG_FUND=false
 export npm_config_audit=false
 
@@ -20,20 +17,8 @@ die(){ echo "❌ $*" >&2; exit 1; }
 note(){ echo "➜ $*"; }
 ok(){ echo "✅ $*"; }
 
-DO_BUILD=0
-TRACE=0
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --build) DO_BUILD=1 ;;
-    --no-build) DO_BUILD=0 ;;
-    --trace) TRACE=1 ;;
-    *) die "Unknown flag: $1" ;;
-  esac; shift
-done
-[ "$TRACE" -eq 1 ] && set -x
-
-# ---- 1) strict .env loader ----------------------------------------------------
-ENV_FILE=".env"
+# ---- 1) strict .env loader: literal KEY=VALUE only ----
+ENV_FILE="${ENV_FILE:-.env}"
 [ -f "$ENV_FILE" ] || die "Missing $ENV_FILE"
 
 if grep -n '\$' "$ENV_FILE" >/dev/null; then
@@ -50,13 +35,14 @@ while IFS= read -r line; do
   fi
   key="${BASH_REMATCH[1]}"
   val="${BASH_REMATCH[2]}"
-  val="${val#"${val%%[![:space:]]*}"}"   # ltrim
+  # trim leading spaces around value
+  val="${val#"${val%%[![:space:]]*}"}"
   export "$key=$val"
 done < "$ENV_FILE"
 set +a
 ok "Loaded environment from $ENV_FILE (literal-only)"
 
-# ---- 2) docker compose validation (best effort) -------------------------------
+# ---- 2) docker compose validation (if available) ----
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   note "Validating docker compose config…"
   docker compose config >/dev/null
@@ -65,30 +51,34 @@ else
   note "docker compose not found; skipping compose validation."
 fi
 
-# ---- 3) CSS Modules purity fix ------------------------------------------------
+# ---- 3) CSS Modules purity fix (no editors, no prompts) ----
 STYLES_DIR="styles"
 GLOBAL_FILE="$STYLES_DIR/parallax-globals.scss"
 mkdir -p "$STYLES_DIR"
 [ -f "$GLOBAL_FILE" ] || printf "/* Global CSS extracted from modules */\n" > "$GLOBAL_FILE"
 
-# gather modules project-wide (Bash 3.2 compatible)
-MODULES=()
-while IFS= read -r -d '' f; do
-  MODULES+=("$f")
-done < <(find . -type f \( -name "*.module.scss" -o -name "*.module.sass" \) -print0)
+# find all SCSS module files (top-level styles/ and elsewhere)
+mapfile -t MODULES < <(find . -type f \( -name "*.module.scss" -o -name "*.module.sass" \))
 
+# extract :root { … } blocks to GLOBAL_FILE and remove from modules (robust, multiline-safe)
 extract_root_blocks() {
   local f="$1"
+  # quick check
   grep -qE '(^|[[:space:]])(:global\(\s*)?:root[[:space:]]*\{' "$f" || return 0
   cp -n "$f" "$f.bak" || true
+  # extract
   perl -0777 -ne 'while (m/(:global\(\s*)?:root\s*\{([^{}]|\{[^}]*\})*?\}/gms) { print "$&\n"; }' "$f" >> "$GLOBAL_FILE" || true
+  # remove
   perl -0777 -pe 's/(:global\(\s*)?:root\s*\{([^{}]|\{[^}]*\})*?\}//gms' -i "$f"
 }
 
+# wrap leading html[...] prefixes with :global(...) to appease CSS Modules
 wrap_html_globals() {
   local f="$1" tmp
   cp -n "$f" "$f.bak" || true
   tmp="$(mktemp)"
+  # Replace only when html[...] is a leading/segment prefix before a class selector
+  # Example: "html[data-theme=light] .layerBack" -> ":global(html[data-theme=light]) .layerBack"
   awk '
     {
       gsub(/(^|[ \t{;])html(\[[^]]*\])([ \t]+(\.))/ , "\\1:global(html\\2)\\3");
@@ -103,13 +93,14 @@ if ((${#MODULES[@]})); then
     extract_root_blocks "$f"
     wrap_html_globals "$f"
   done
+  # simple de-dup rows in global file
   awk '!seen[$0]++' "$GLOBAL_FILE" > "$GLOBAL_FILE.tmp" && mv "$GLOBAL_FILE.tmp" "$GLOBAL_FILE"
   ok "CSS Modules cleaned"
 else
   note "No *.module.scss files found; skipping CSS Modules fixes."
 fi
 
-# ensure global import present
+# ---- 4) ensure global import exists (prepend via temp file; no sed -i tricks) ----
 IMPORT_LINE='import "@/styles/parallax-globals.scss";'
 TARGET=""
 if [ -f "app/layout.tsx" ]; then
@@ -117,26 +108,26 @@ if [ -f "app/layout.tsx" ]; then
 elif [ -f "pages/_app.tsx" ]; then
   TARGET="pages/_app.tsx"
 fi
+
 if [ -n "$TARGET" ] && ! grep -Fq "$IMPORT_LINE" "$TARGET"; then
   note "Adding global import to $TARGET"
-  tmp="$(mktemp)"; { echo "$IMPORT_LINE"; cat "$TARGET"; } > "$tmp"; mv "$tmp" "$TARGET"
+  tmp="$(mktemp)"
+  {
+    echo "$IMPORT_LINE"
+    cat "$TARGET"
+  } > "$tmp"
+  mv "$tmp" "$TARGET"
   ok "Global import added"
 else
   note "Global import already present or router entry not found; skipping."
 fi
 
-# ---- 4) Build (optional; default OFF so we can isolate issues) ----------------
-if [ "$DO_BUILD" -eq 1 ]; then
-  note "Building Next.js (non-interactive)…"
-  if jq -e '.scripts.build' package.json >/dev/null 2>&1; then
-    npm run -s build
-  else
-    npx --yes next build
-  fi
-  ok "Build completed"
+# ---- 5) build (non-interactive) ----
+note "Building Next.js…"
+if jq -e '.scripts.build' package.json >/dev/null 2>&1; then
+  npm run -s build
 else
-  note "Skipping build (use --build to enable)."
+  npx --yes next build
 fi
-
-ok "init_step_two_b.sh finished."
+ok "Build completed"
 
