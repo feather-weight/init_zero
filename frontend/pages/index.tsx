@@ -22,8 +22,8 @@ export default function Home({ project, parallax, backendStatus }: Props) {
       <Head><title>{project}</title></Head>
       {parallax && (
         <section className="parallax parallax--hero" aria-label="Decorative animated background">
-          <div className="p-slow"><span className="gradient">PURE CSS</span></div>
-          <div className="p-med"><span className="gradient">PARALLAX PIXEL STARS</span></div>
+          <div className="p-slow"><span className="gradient">Your first step in finding your lost treasure</span></div>
+          <div className="p-med"><span className="gradient">Wallet Recovery Center</span></div>
         </section>
       )}
       <main className="container">
