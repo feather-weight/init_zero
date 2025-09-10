@@ -15,7 +15,8 @@ export default function App({ Component, pageProps }: AppProps) {
       <div className="header" style={{ position: 'relative', zIndex: 1 }}>
         <strong>Wallet Recoverer</strong>
         <div style={{ marginLeft: 'auto' }}><ThemeToggle /></div>
-        <a href="/login" className="btn" style={{ marginLeft: '.75rem' }}>Login</a>
+        <a href="/register" className="btn" style={{ marginLeft: '.75rem' }}>Register</a>
+        <a href="/login" className="btn" style={{ marginLeft: '.5rem' }}>Sign In</a>
       </div>
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Component {...pageProps} />
