@@ -75,10 +75,10 @@ detect_next_dir() {
   return 1
 }
 NEXT_DIR="$(detect_next_dir)" || die "No Next.js app found (needs package.json with \"next\" AND app/ or pages/)"
-note "Detected Next app: $NEXT_DIR"
+note "Detected Next app: ${NEXT_DIR}"
 
 # ---- 4) CSS Modules purity fix (scoped to NEXT_DIR) ----
-STYLES_DIR="$NEXT_DIR/styles"
+STYLES_DIR="${NEXT_DIR}/styles"
 GLOBAL_FILE="$STYLES_DIR/parallax-globals.scss"
 mkdir -p "$STYLES_DIR"
 [ -f "$GLOBAL_FILE" ] || printf "/* Global CSS extracted from modules */\n" > "$GLOBAL_FILE"
@@ -87,7 +87,7 @@ mkdir -p "$STYLES_DIR"
 MODULES=()
 while IFS= read -r -d '' f; do
   MODULES+=("$f")
-done < <(find "$NEXT_DIR" -type f \( -name "*.module.scss" -o -name "*.module.sass" \) -print0)
+done < <(find "${NEXT_DIR}" -type f \( -name "*.module.scss" -o -name "*.module.sass" \) -print0)
 
 extract_root_blocks() {
   local f="$1"
@@ -105,27 +105,26 @@ wrap_html_globals() {
 }
 
 if [ "${#MODULES[@]}" -gt 0 ]; then
-  note "Fixing CSS Modules purity across ${#MODULES[@]} files in $NEXT_DIR…"
+  note "Collecting any :root globals from ${#MODULES[@]} module files..."
   for f in "${MODULES[@]}"; do
     extract_root_blocks "$f"
-    wrap_html_globals "$f"
   done
-  awk '!seen[$0]++' "$GLOBAL_FILE" > "$GLOBAL_FILE.tmp" && mv "$GLOBAL_FILE.tmp" "$GLOBAL_FILE"
-  ok "CSS Modules cleaned"
+  # Do not dedupe line-by-line; it can drop closing braces and break CSS.
+  ok "Global variables consolidated"
 else
-  note "No *.module.scss files found under $NEXT_DIR; skipping CSS fixes."
+  note "No *.module.scss files found under ${NEXT_DIR}; skipping CSS fixes."
 fi
 
 # ---- 5) ensure global import exists in NEXT_DIR ----
-IMPORT_LINE='import "@/styles/parallax-globals.scss";'
+IMPORT_LINE='import "../styles/parallax-globals.scss";'
 TARGET=""
-if [ -f "$NEXT_DIR/app/layout.tsx" ]; then
-  TARGET="$NEXT_DIR/app/layout.tsx"
-elif [ -f "$NEXT_DIR/pages/_app.tsx" ]; then
-  TARGET="$NEXT_DIR/pages/_app.tsx"
+if [ -f "${NEXT_DIR}/app/layout.tsx" ]; then
+  TARGET="${NEXT_DIR}/app/layout.tsx"
+elif [ -f "${NEXT_DIR}/pages/_app.tsx" ]; then
+  TARGET="${NEXT_DIR}/pages/_app.tsx"
 fi
 
-if [ -n "$TARGET" ] && ! grep -Fq "$IMPORT_LINE" "$TARGET"; then
+if [ -n "$TARGET" ] && ! grep -Fq "parallax-globals.scss" "$TARGET"; then
   note "Adding global import to $TARGET"
   tmp="$(mktemp)"; { echo "$IMPORT_LINE"; cat "$TARGET"; } > "$tmp"; mv "$tmp" "$TARGET"
   ok "Global import added"
@@ -133,11 +132,66 @@ else
   note "Global import already present or router entry not found; skipping."
 fi
 
-# ---- 6) build (non-interactive) in NEXT_DIR ----
-note "Building Next.js in $NEXT_DIR…"
-if jq -e '.scripts.build' "$NEXT_DIR/package.json" >/dev/null 2>&1; then
-  ( cd "$NEXT_DIR" && npm run -s build )
+# ---- 6) install deps if needed, then build (non-interactive) ----
+
+# Ensure Node and npm are available
+command -v npm >/dev/null 2>&1 || die "npm not found. Install Node.js >= 18."
+
+note "Ensuring Node dependencies in ${NEXT_DIR}..."
+# Print effective proxy config without invoking protected npm getters
+( cd "${NEXT_DIR}" && {
+  echo "npm (.npmrc):";
+  if [ -f .npmrc ]; then
+    grep -E '^(proxy|https-proxy|cafile|strict-ssl)=' .npmrc || true;
+  else
+    echo "(no .npmrc present)";
+  fi
+  echo "env HTTP_PROXY:  ${HTTP_PROXY:-<unset>}";
+  echo "env HTTPS_PROXY: ${HTTPS_PROXY:-<unset>}";
+echo "env NO_PROXY:    ${NO_PROXY:-<unset>}";
+} )
+
+# Fail fast if npm cannot reach the registry via proxy
+note "Pinging npm registry to verify connectivity..."
+if ! ( cd "${NEXT_DIR}" && npm_config_proxy='' npm_config_https_proxy='' npm_config_noproxy="${NO_PROXY:-}" npm_config_strict_ssl="${NPM_STRICT_SSL:-true}" npm_config_fetch_timeout=15000 npm ping >/dev/null 2>&1 ); then
+  echo "❌ npm registry unreachable with current proxy settings." >&2
+  echo "   Check HTTP_PROXY/HTTPS_PROXY credentials and reachability." >&2
+  echo "   If your company intercepts TLS, set PROXY_CAFILE in .env and rerun scripts/setup_proxy_from_env.sh" >&2
+  echo "   For debug: cd frontend && npm ping -ddd" >&2
+  exit 1
+fi
+MISSING_TS_DEPS=0
+if [ -d "${NEXT_DIR}/node_modules" ]; then
+  for d in "typescript" "@types/react" "@types/node"; do
+    if [ ! -d "${NEXT_DIR}/node_modules/${d}" ]; then MISSING_TS_DEPS=1; break; fi
+  done
+fi
+
+REASON=""
+if [ ! -d "${NEXT_DIR}/node_modules" ]; then
+  REASON="node_modules missing"
+elif [ ! -x "${NEXT_DIR}/node_modules/.bin/next" ]; then
+  REASON="next binary missing"
+elif [ "$MISSING_TS_DEPS" -eq 1 ]; then
+  REASON="TypeScript dev deps missing"
+fi
+
+if [ -n "$REASON" ]; then
+  note "Installing Node dependencies (dev included); reason: $REASON"
+  ( cd "${NEXT_DIR}" && \
+    if [ -f package-lock.json ]; then npm_config_production=false npm_config_fetch_timeout=60000 npm_config_fetch_retries=2 npm_config_proxy="${HTTP_PROXY:-}" npm_config_https_proxy="${HTTPS_PROXY:-}" npm_config_strict_ssl="${NPM_STRICT_SSL:-true}" npm ci --no-audit --progress=false; else npm_config_production=false npm_config_fetch_timeout=60000 npm_config_fetch_retries=2 npm_config_proxy="${HTTP_PROXY:-}" npm_config_https_proxy="${HTTPS_PROXY:-}" npm_config_strict_ssl="${NPM_STRICT_SSL:-true}" npm install --no-audit --progress=false; fi )
+  ok "Node dependencies installed"
 else
-  ( cd "$NEXT_DIR" && npx --yes next build )
+  note "node_modules present; skipping install"
+fi
+
+note "Building Next.js in ${NEXT_DIR}..."
+if jq -e '.scripts.build' "${NEXT_DIR}/package.json" >/dev/null 2>&1; then
+  (
+    set +e
+    cd "${NEXT_DIR}" && npm_config_production=false npm run -s build
+  )
+else
+  ( cd "${NEXT_DIR}" && npx --yes next build )
 fi
 ok "Build completed"

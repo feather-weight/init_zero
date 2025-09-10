@@ -15,5 +15,3 @@ RUN npm run build
 
 # No hard-coded port here; compose sets PORT and we pass it to next via command
 EXPOSE 3000
-
-# The actual port is provided by env PORT; we start via compose command

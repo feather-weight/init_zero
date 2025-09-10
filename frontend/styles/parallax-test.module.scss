@@ -1,10 +1,6 @@
 
 
-html[data-theme='light'] {
-  --overlay: rgba(255,255,255,.25);
-  --text: #222;
-  --page: #f6f6f6;
-}
+/* Theme variables are defined globally in styles/parallax-globals.scss */
 
 .wrap { position: relative; min-height: 200vh; background: var(--page); color: var(--text); }
 
@@ -26,7 +22,7 @@ html[data-theme='light'] {
 .layerBack {
   background-image: linear-gradient(var(--overlay), var(--overlay)), var(--bg-dark);
 }
-\1:global(html\2)\3layerBack {
+:global(html[data-theme='light']) .layerBack {
   background-image: linear-gradient(var(--overlay), var(--overlay)), var(--bg-light);
 }
 .layerMid {
