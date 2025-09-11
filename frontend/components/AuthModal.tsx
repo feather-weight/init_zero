@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import styles from '../styles/modal.module.scss'
 
 type Props = { onClose: () => void }
 
@@ -24,9 +25,15 @@ export default function AuthModal({ onClose }: Props) {
   const [code, setCode] = useState('')
   const [stage, setStage] = useState<'input'|'challenge'|'done'>('input')
   const [error, setError] = useState<string>('')
+  const [open, setOpen] = useState(true)
+  const [fieldErrors, setFieldErrors] = useState<{publicKey?:string; code?:string}>({})
 
   const requestChallenge = async () => {
     setError('')
+    const errs: typeof fieldErrors = {}
+    if (!publicKey.includes('BEGIN PGP PUBLIC KEY BLOCK')) errs.publicKey = 'Paste an ASCII‑armored public key'
+    setFieldErrors(errs)
+    if (Object.keys(errs).length) return
     try {
       const res = await fetch(`${base}/auth/challenge`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -41,6 +48,10 @@ export default function AuthModal({ onClose }: Props) {
 
   const verifyCode = async () => {
     setError('')
+    const errs: typeof fieldErrors = {}
+    if (!/^\d{6}$/.test(code.trim())) errs.code = 'Enter the 6‑digit code'
+    setFieldErrors(errs)
+    if (Object.keys(errs).length) return
     try {
       const res = await fetch(`${base}/auth/verify`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -53,27 +64,35 @@ export default function AuthModal({ onClose }: Props) {
     } catch (e: any) { setError(e.message || String(e)) }
   }
 
+  const requestClose = () => { setOpen(false); setTimeout(onClose, 240) }
   return (
-    <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,.6)', display:'grid', placeItems:'center', zIndex: 10}}>
-      <div style={{background:'#111826aa', border:'1px solid #2a2a2a', padding:'1rem', maxWidth:680, width:'92%', borderRadius:8}}>
-        <div style={{display:'flex', alignItems:'center'}}>
-          <h2 style={{margin:'0 0 .5rem 0'}}>Sign In</h2>
-          <button onClick={onClose} style={{marginLeft:'auto'}}>Close</button>
+    <div className={`${styles.overlay} ${open ? styles.overlayOpen : styles.overlayClose}`}>
+      <div className={`${styles.modal} ${open ? styles.modalOpen : styles.modalClose}`}>
+        <div className={styles.header}>
+          <h2 className={styles.title}>Sign In</h2>
+          <button className={styles.closeBtn} onClick={requestClose}>Close</button>
         </div>
         {stage==='input' && (
-          <div style={{display:'grid', gap:'.5rem'}}>
-            <label>Public PGP Key (ASCII-armor)
-              <textarea rows={6} value={publicKey} onChange={e=>setPublicKey(e.target.value)} placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----" />
+          <div className={styles.form}>
+            <label className={styles.row}>
+              <span>Public PGP Key (ASCII-armor)</span>
+              <textarea className={`${styles.textarea} ${fieldErrors.publicKey ? styles.textareaError : ''}`} rows={10} value={publicKey} onChange={e=>setPublicKey(e.target.value)} placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----" aria-invalid={!!fieldErrors.publicKey} />
+              {fieldErrors.publicKey && <small className={styles.errorText}>{fieldErrors.publicKey}</small>}
             </label>
-            <button className="btn" onClick={requestChallenge}>Request Challenge</button>
+            <div className={styles.actions}>
+              <button className="btn" onClick={requestChallenge}>Request Challenge</button>
+            </div>
           </div>
         )}
         {stage==='challenge' && (
-          <div style={{display:'grid', gap:'.5rem'}}>
+          <div className={styles.form}>
             <p>Decrypt the block below with your private key, then enter the 6-digit code.</p>
-            <textarea rows={10} value={encrypted} readOnly />
-            <input placeholder="Decrypted 6-digit code" value={code} onChange={e=>setCode(e.target.value)} />
-            <button className="btn" onClick={verifyCode}>Verify</button>
+            <textarea className={styles.textarea} rows={12} value={encrypted} readOnly />
+            <input className={`${styles.input} ${fieldErrors.code ? styles.inputError : ''}`} placeholder="Decrypted 6-digit code" value={code} onChange={e=>setCode(e.target.value)} aria-invalid={!!fieldErrors.code} />
+            {fieldErrors.code && <small className={styles.errorText}>{fieldErrors.code}</small>}
+            <div className={styles.actions}>
+              <button className="btn" onClick={verifyCode}>Verify</button>
+            </div>
           </div>
         )}
         {stage==='done' && (
@@ -84,4 +103,3 @@ export default function AuthModal({ onClose }: Props) {
     </div>
   )
 }
-

@@ -1,6 +1,4 @@
 import Head from 'next/head';
-import { useState } from 'react';
-import AuthModal from '../components/AuthModal';
 
 type Props = { project: string; parallax: boolean; backendStatus: string };
 
@@ -19,7 +17,6 @@ export async function getServerSideProps() {
 }
 
 export default function Home({ project, parallax, backendStatus }: Props) {
-  const [showAuth, setShowAuth] = useState(false)
   return (
     <>
       <Head><title>{project}</title></Head>
@@ -33,11 +30,7 @@ export default function Home({ project, parallax, backendStatus }: Props) {
         <p className="hint">Watch-only wallet recovery — educational and defensive.</p>
         <p><strong>Backend:</strong> <span className="badge">{backendStatus}</span></p>
         <span className="badge">Step 2(d): Theme toggle + dual parallax</span>
-        <div style={{marginTop: '.75rem'}}>
-          <button className="btn" onClick={()=>setShowAuth(true)}>Sign In</button>
-        </div>
       </main>
-      {showAuth && <AuthModal onClose={()=>setShowAuth(false)} />}
     </>
   );
 }

@@ -3,12 +3,18 @@
   --overlay: rgba(255,255,255,.10);
   --text: #0b0b0b;
   --bg: #ffffff;
+  --modal-bg: rgba(255,255,255,0.96);
+  --modal-border: #d1d5db;
+  --modal-shadow: 0 10px 30px rgba(0,0,0,0.15);
 }
 [data-theme='dark'] {
   --bg-url: url('/parallax-dark.jpg');
   --overlay: rgba(0,0,0,.30);
   --text: #f7f7f7;
   --bg: #0b0b0b;
+  --modal-bg: rgba(17,24,38,0.93);
+  --modal-border: #2a2a2a;
+  --modal-shadow: 0 10px 30px rgba(0,0,0,0.45);
 }
 html, body, #__next { height: 100%; }
 body {
