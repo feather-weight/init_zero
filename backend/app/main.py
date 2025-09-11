@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes_health import router as health_router
@@ -6,9 +7,12 @@ from app.api.routes_auth_pgp import router as auth_pgp_router
 
 app = FastAPI(title="${PROJECT_NAME}", version="0.1.0")
 
+origins_env = os.getenv("CORS_ORIGINS") or os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+allow_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # dev-friendly; tighten later
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

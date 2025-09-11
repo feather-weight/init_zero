@@ -11,6 +11,10 @@ export default function RegisterModal({ onClose }: Props) {
   const base = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:8000'
   const [errors, setErrors] = useState<{handle?:string; email?:string; publicKey?:string}>({})
   const [open, setOpen] = useState(true)
+  const [stage, setStage] = useState<'form'|'challenge'|'done'>('form')
+  const [fingerprint, setFingerprint] = useState('')
+  const [encrypted, setEncrypted] = useState('')
+  const [code, setCode] = useState('')
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,7 +32,34 @@ export default function RegisterModal({ onClose }: Props) {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.detail || 'Registration failed')
-      setResult('Submitted. Await manual approval via email.')
+      setEncrypted(data.encrypted)
+      setFingerprint(data.fingerprint)
+      setStage('challenge')
+      setResult('')
+    } catch (e: any) {
+      setResult(`Error: ${e.message || String(e)}`)
+    }
+  }
+
+  const verifyRegistration = async () => {
+    const errs: typeof errors = {}
+    if (!/^\d{6}$/.test(code.trim())) errs.publicKey = '' // re-use
+    setErrors(errs)
+    try {
+      const res = await fetch(`${base}/auth/register/verify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint, code })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.detail || 'Verification failed')
+      if (data.email === 'sent' || data.email === 'not_configured') {
+        setResult('PGP ownership verified. Check your inbox for an encrypted email verification link.')
+      } else if (data.email === 'send_failed') {
+        setResult('PGP verified, but email failed to send. Contact support.')
+      } else {
+        setResult('PGP ownership verified.')
+      }
+      setStage('done')
     } catch (e: any) {
       setResult(`Error: ${e.message || String(e)}`)
     }
@@ -42,27 +73,44 @@ export default function RegisterModal({ onClose }: Props) {
           <h2 className={styles.title}>Register</h2>
           <button className={styles.closeBtn} onClick={requestClose}>Close</button>
         </div>
-        <form className={styles.form} onSubmit={onSubmit}>
-          <label className={styles.row}>
-            <span>Desired handle <span className={styles.hintIcon} title="3–32 chars; letters, numbers, _ or - only">ⓘ</span></span>
-            <input className={`${styles.input} ${errors.handle ? styles.inputError : ''}`} placeholder="handle" value={handle} onChange={e=>setHandle(e.target.value)} aria-invalid={!!errors.handle} />
-            {errors.handle && <small className={styles.errorText}>{errors.handle}</small>}
-          </label>
-          <label className={styles.row}>
-            <span>Verifiable email <span className={styles.hintIcon} title="We will contact and verify ownership (KYC)">ⓘ</span></span>
-            <input className={`${styles.input} ${errors.email ? styles.inputError : ''}`} placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)} aria-invalid={!!errors.email} />
-            {errors.email && <small className={styles.errorText}>{errors.email}</small>}
-          </label>
-          <label className={styles.row}>
-            <span>Public PGP key (ASCII-armor) <span className={styles.hintIcon} title="Use a strong 4096-bit key with passphrase; do not use web key generators or weak tools.">ⓘ</span></span>
-            <textarea className={`${styles.textarea} ${errors.publicKey ? styles.textareaError : ''}`} rows={14} placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----" value={publicKey} onChange={e=>setPublicKey(e.target.value)} aria-invalid={!!errors.publicKey} />
-            {errors.publicKey && <small className={styles.errorText}>{errors.publicKey}</small>}
-          </label>
-          <div className={styles.actions}>
-            <button className="btn" type="submit">Submit for Approval</button>
-            {result && <span className="hint">{result}</span>}
+        {stage === 'form' && (
+          <form className={styles.form} onSubmit={onSubmit}>
+            <label className={styles.row}>
+              <span>Desired handle <span className={styles.hintIcon} title="3–32 chars; letters, numbers, _ or - only">ⓘ</span></span>
+              <input className={`${styles.input} ${errors.handle ? styles.inputError : ''}`} placeholder="handle" value={handle} onChange={e=>setHandle(e.target.value)} aria-invalid={!!errors.handle} />
+              {errors.handle && <small className={styles.errorText}>{errors.handle}</small>}
+            </label>
+            <label className={styles.row}>
+              <span>Verifiable email <span className={styles.hintIcon} title="We will contact and verify ownership (KYC)">ⓘ</span></span>
+              <input className={`${styles.input} ${errors.email ? styles.inputError : ''}`} placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)} aria-invalid={!!errors.email} />
+              {errors.email && <small className={styles.errorText}>{errors.email}</small>}
+            </label>
+            <label className={styles.row}>
+              <span>Public PGP key (ASCII-armor) <span className={styles.hintIcon} title="Use a strong 4096-bit key with passphrase; do not use web key generators or weak tools.">ⓘ</span></span>
+              <textarea className={`${styles.textarea} ${errors.publicKey ? styles.textareaError : ''}`} rows={14} placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----" value={publicKey} onChange={e=>setPublicKey(e.target.value)} aria-invalid={!!errors.publicKey} />
+              {errors.publicKey && <small className={styles.errorText}>{errors.publicKey}</small>}
+            </label>
+            <div className={styles.actions}>
+              <button className="btn" type="submit">Submit</button>
+              {result && <span className="hint">{result}</span>}
+            </div>
+          </form>
+        )}
+        {stage === 'challenge' && (
+          <div className={styles.form}>
+            <p>Decrypt the block below with your private key, then enter the 6-digit code to prove ownership.</p>
+            <textarea className={styles.textarea} rows={12} value={encrypted} readOnly />
+            <input className={styles.input} placeholder="Decrypted 6-digit code" value={code} onChange={e=>setCode(e.target.value)} />
+            <div className={styles.actions}>
+              <button className="btn" type="button" onClick={verifyRegistration}>Verify Ownership</button>
+            </div>
           </div>
-        </form>
+        )}
+        {stage === 'done' && (
+          <div className={styles.form}>
+            <p>{result || 'Ownership verified. Check your email for the encrypted verification link.'}</p>
+          </div>
+        )}
       </div>
     </div>
   )
