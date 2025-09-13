@@ -18,10 +18,19 @@ services:
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
       - API_BASE=${API_BASE}
+      # Mongo (support both legacy and new vars in app)
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB_NAME=${MONGO_DB}
+      - MDB_URI=${MONGO_URI}
+      - MDB_DB=${MONGO_DB}
+      # CORS / frontend origin
+      - FRONTEND_BASE_URL=${FE_URL}
+      - CORS_ORIGINS=${FE_URL}
+      # Admin token for approval endpoint
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
       - JWT_SECRET=${JWT_SECRET}
       - PORT=${BE_INTERNAL_PORT}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
     working_dir: ${WORKING_DIR}
     command: uvicorn app.main:app --host 0.0.0.0 --port ${BE_INTERNAL_PORT}
     depends_on:

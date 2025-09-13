@@ -7,7 +7,8 @@ from app.api.routes_auth_pgp import router as auth_pgp_router
 
 app = FastAPI(title="${PROJECT_NAME}", version="0.1.0")
 
-origins_env = os.getenv("CORS_ORIGINS") or os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+# Allow CORS from configured frontend origin(s). Treat empty env values as unset.
+origins_env = os.getenv("CORS_ORIGINS") or os.getenv("FRONTEND_BASE_URL") or "http://localhost:3000"
 allow_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
 
 app.add_middleware(

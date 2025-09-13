@@ -10,7 +10,7 @@
 - Why this exists: Generates HD extended keys for recovery research, surfaces only valid hits (addresses with activity), and visualizes progress. Designed for defensive, educational workflows.
 - Statistical reality: The probability that a random key maps to a used Bitcoin address is ~10⁻⁴⁰. Treat this as instrumentation, not a money printer.
 
-See Repository Guidelines and SECURITY.md for details on configuration and safe use.
+See [Repository Guidelines](AGENTS.md) and [SECURITY.md](SECURITY.md) for configuration and safe use.
 
 ## Hex Generation Utility (backend)
 
