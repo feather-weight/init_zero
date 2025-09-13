@@ -4,7 +4,7 @@ export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [result, setResult] = useState<string>('')
-  const base = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:8000'
+  const base = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000'
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,4 +37,3 @@ export default function Login() {
     </main>
   )
 }
-

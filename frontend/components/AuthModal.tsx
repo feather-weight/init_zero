@@ -18,7 +18,7 @@ function genClientFP(): string {
 }
 
 export default function AuthModal({ onClose }: Props) {
-  const base = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:8000'
+  const base = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000'
   const client_fp = useMemo(() => genClientFP(), [])
   const [publicKey, setPublicKey] = useState('')
   const [encrypted, setEncrypted] = useState('')

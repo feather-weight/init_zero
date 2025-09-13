@@ -1,23 +1,28 @@
-# OS
-.DS_Store
-
 # Node
 node_modules/
-.npm/
 .next/
 out/
+*.log
 
 # Python
 __pycache__/
+.pytest_cache/
 *.pyc
-.venv/
-venv/
-
-# Docker & data
-.data/
-*.log
+*.pyo
+*.pyd
 
 # Env
-.env
-.env.*
-frontend/.npmrc
+.env.local
+.env.*.local
+
+# Docker
+.DS_Store
+docker-data/
+
+# Coverage
+coverage/
+.coverage*
+
+# IDE
+.vscode/
+.idea/

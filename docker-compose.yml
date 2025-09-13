@@ -1,64 +1,47 @@
+version: '3.9'
+
 services:
-  mongo:
-    image: ${MDB_IMAGE}
-    container_name: ${MDB_CONTAINER_NAME}
+  mongodb:
+    image: mongo:6
     restart: unless-stopped
-    command: mongod --port ${MDB_PORT}
     ports:
-      - "${MDB_PORT}:${MDB_PORT}"
+      - "${MDB_PORT:-27017}:27017"
     volumes:
-      - "${VOLUME}:/data/db"
+      - mongo_data:/data/db
 
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: ${BE_CONTAINER_NAME}
-    restart: unless-stopped
+      context: ./backend
+    env_file:
+      - .env
     environment:
-      - PROJECT_NAME=${PROJECT_NAME}
-      - API_BASE=${API_BASE}
-      # Mongo (support both legacy and new vars in app)
-      - MONGO_URI=${MONGO_URI}
-      - MONGO_DB_NAME=${MONGO_DB}
-      - MDB_URI=${MONGO_URI}
-      - MDB_DB=${MONGO_DB}
-      # CORS / frontend origin
-      - FRONTEND_BASE_URL=${FE_URL}
-      - CORS_ORIGINS=${FE_URL}
-      # Admin token for approval endpoint
-      - ADMIN_TOKEN=${ADMIN_TOKEN}
-      - JWT_SECRET=${JWT_SECRET}
-      - PORT=${BE_INTERNAL_PORT}
-      - ADMIN_TOKEN=${ADMIN_TOKEN}
-    working_dir: ${WORKING_DIR}
-    command: uvicorn app.main:app --host 0.0.0.0 --port ${BE_INTERNAL_PORT}
+      - MDB_URI=${MDB_URI}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+    volumes:
+      - ./backend:/app
     depends_on:
-      - mongo
+      - mongodb
     ports:
-      - "${BE_PORT}:${BE_INTERNAL_PORT}"
+      - "${BE_PORT:-8000}:8000"
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ${FE_CONTAINER_NAME}
-    restart: unless-stopped
+      context: ./frontend
+    env_file:
+      - .env
     environment:
-      - PROJECT_NAME=${PROJECT_NAME}
-      - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME}
       - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
-      - NEXT_PUBLIC_BE_URL=${BE_URL}
-      - NEXT_PUBLIC_BACKEND_URL=${BE_URL}
-      - NEXT_PUBLIC_PARALLAX=${NEXT_PUBLIC_PARALLAX}
-      - PORT=${FE_INTERNAL_PORT}
-    working_dir: ${WORKING_DIR}
-    command: sh -c "npm run start -- -H 0.0.0.0 -p ${FE_INTERNAL_PORT}"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
     ports:
-      - "${FE_PORT}:${FE_INTERNAL_PORT}"
+      - "${FE_PORT:-3000}:3000"
+    command: npm run dev
 
-networks:
-  default:
-    name: ${NETWORK_NAME}
+volumes:
+  mongo_data:
+    driver: local
+

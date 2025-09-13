@@ -8,7 +8,7 @@ export default function RegisterModal({ onClose }: Props) {
   const [email, setEmail] = useState('')
   const [publicKey, setPublicKey] = useState('')
   const [result, setResult] = useState<string>('')
-  const base = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:8000'
+  const base = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000'
   const [errors, setErrors] = useState<{handle?:string; email?:string; publicKey?:string}>({})
   const [open, setOpen] = useState(true)
   const [stage, setStage] = useState<'form'|'challenge'|'done'>('form')

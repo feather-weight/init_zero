@@ -1,12 +1,17 @@
+import os
 from fastapi import APIRouter
-from datetime import datetime, timezone
 
 router = APIRouter()
 
+
 @router.get("/health")
-async def health():
+def health():
+    mdb_uri = os.getenv("MDB_URI", "")
+    mdb_uri_valid = mdb_uri.startswith("mongodb://") or mdb_uri.startswith("mongodb+srv://")
     return {
-        "status": "ok",
         "service": "backend",
-        "ts": datetime.now(timezone.utc).isoformat()
+        "status": "ok",
+        "mongodb_uri_present": bool(mdb_uri),
+        "mongodb_uri_valid": mdb_uri_valid,
     }
+
