@@ -105,7 +105,7 @@ services:
     ports:
       - "27020:27020"
     volumes:
-      - ./.data/mongo:/data/db
+      - mongo_data:/data/db
     command: ["--bind_ip_all"]
 
   backend:
@@ -128,6 +128,10 @@ services:
 networks:
   default:
     name: recoverynet
+
+volumes:
+  mongo_data:
+    driver: local
 YML
 
 echo "==> Build & start backend"

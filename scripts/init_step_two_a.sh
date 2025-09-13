@@ -83,7 +83,7 @@ services:
     ports:
       - "${MONGO_PORT}:27017"
     volumes:
-      - ./.data/mongo:/data/db
+      - mongo_data:/data/db
     command: ["--bind_ip_all"]
 
   backend:
@@ -106,6 +106,10 @@ services:
 networks:
   default:
     name: ${NETWORK_NAME}
+
+volumes:
+  mongo_data:
+    driver: local
 YML
 
 say "Validating docker-compose and bringing services up"
